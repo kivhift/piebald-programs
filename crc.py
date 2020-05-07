@@ -97,11 +97,50 @@ def CRC(poly, width, data
 
     return out_xform(crc, width) ^ xor_out
 
+def print_LUT(poly, width):
+    if width > 64:
+        raise ValueError(f'Width is more than biggest stdint size: {width} > 64')
+
+    # There ain't but 4...
+    if width < 9:
+        stdint = 'uint8_t'
+    elif width < 17:
+        stdint = 'uint16_t'
+    elif width < 33:
+        stdint = 'uint32_t'
+    else:
+        stdint = 'uint64_t'
+
+    hex_width, need_one_more = divmod(width, 4)
+    if need_one_more:
+        hex_width += 1
+
+    fmt = f'0x{{:0{hex_width}x}}'
+    indent = ' ' * 4
+    T = gen_table(poly, width)
+
+    print(f'static const {stdint} CRC{width}_{fmt.format(poly)}_LUT[{len(T)}] = {{')
+    print(f'{indent}{fmt.format(T.pop(0))}', end = '')
+    for i, x in enumerate(T, 1):
+        if 0 == (i & 7):
+            print(f'\n{indent}', end = '')
+        print(f', {fmt.format(x)}', end = '')
+    print('\n};')
+
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description = 'Compute CRCs over data'
-        ' supplied via the command line, files or stdin')
+    parser = argparse.ArgumentParser(description = '''
+        Compute a CRC over data supplied via the command line, a file or stdin
+        '''
+        , epilog = '''
+        The calculations are based on the common case of taking the input a
+        byte at a time.  If, for example, a CRC4 is needed for an odd number of
+        nybbles, then you'll have to finagle things a bit to get the answer.
+        If (for some strange reason) multiple data sources are specified, the
+        data-input precedence is: --input > --hex > --str > stdin.
+        '''
+        , formatter_class = argparse.ArgumentDefaultsHelpFormatter)
     _a = parser.add_argument
     _a('-p', '--poly', required = True
         , help = 'Polynomial to use')
@@ -121,6 +160,8 @@ def main():
         , help = 'Hexadecimal string of data')
     _a('--str'
         , help = 'String of data (encoded using locale\'s encoding)')
+    _a('--lut', action = 'store_true'
+        , help = 'Print LUT to stdout as C-style array using stdints, then exit')
     args = parser.parse_args()
 
     P = int(args.poly, 0)
@@ -129,6 +170,11 @@ def main():
     xo = int(args.xor_out, 0)
     ri = args.reflect_input
     ro = args.reflect_output
+
+    if args.lut:
+        import sys
+        print_LUT(P, W)
+        sys.exit(0)
 
     fn = LUT_CRC if W >= 8 and 0 == (W % 8) else CRC
 
