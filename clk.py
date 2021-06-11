@@ -6,7 +6,7 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.0.1'
+__version__ = '1.0.2'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -97,12 +97,14 @@ def gui(database):
             p.setValue(min(p.maximum(), self.week_total))
 
         def update_progress(self):
-            self.day_total += 1
-            self.week_total += 1
+            delta = datetime.now().timestamp() - self.last_in_ts
+            self.day_total = round(self.last_in_day_total + delta)
+            self.week_total = round(self.last_in_week_total + delta)
             self.set_progress()
             self.update_totals()
 
         def in_out(self):
+            now_ts = datetime.now().timestamp()
             with SQLite3Connection(self.database) as conn:
                 cur = conn.cursor()
                 cur.execute(_schema)
@@ -120,16 +122,20 @@ def gui(database):
                     self.button.setText(self.text[in_])
                 else:
                     cur.execute('insert into clocks values(?,?);'
-                        , (datetime.now().timestamp(), self.in_ ^ 1))
+                        , (now_ts, self.in_ ^ 1))
                     self.in_ ^= 1
                     self.button.setText(self.text[self.in_])
                 if self.in_:
+                    self.last_in_ts = now_ts
                     self.timer.start()
                 else:
                     self.timer.stop()
                 totals = day_totals(cur)
                 self.day_total = round(totals[-1])
                 self.week_total = round(sum(totals))
+                if self.in_:
+                    self.last_in_day_total = self.day_total
+                    self.last_in_week_total = self.week_total
                 self.set_progress()
                 self.update_totals()
 
