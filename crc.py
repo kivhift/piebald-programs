@@ -3,7 +3,7 @@
 import os
 import sys
 
-__version__ = '1.1.0'
+__version__ = '1.2.0'
 
 def _bytes(x):
     try:
@@ -151,7 +151,7 @@ reason) multiple data sources are specified, the data-input precedence is:
 Supplying only the polynomial without specifying the width implies that the
 polynomial is given in implicit +1 notation (Koopman's notation) and thus the
 width will be derived from the polynomial.  If the width is supplied along with
-the polynomial, the it's assumed to be the "normal" notation with an implied
+the polynomial, then it's assumed to be the "normal" notation with an implied
 x^W.'''
         , formatter_class = HelpFormatter)
     _a = parser.add_argument
@@ -159,9 +159,9 @@ x^W.'''
         , help = 'Polynomial to use')
     _a('-w', '--width'
         , help = 'Width of the CRC in bits')
-    _a('-x', '--xor-in', default = '0'
+    _a('-x', '--xor-in'
         , help = 'The input XOR value')
-    _a('-X', '--xor-out', default = '0'
+    _a('-X', '--xor-out'
         , help = 'The output XOR value')
     _a('-r', '--reflect-input', action = 'store_true'
         , help = 'Reflect the input')
@@ -169,6 +169,10 @@ x^W.'''
         , help = 'Reflect the output')
     _a('-i', '--input'
         , help = 'File to use as input')
+    _a('-s', '--skip'
+        , help = 'Skip this many bytes of input file; can be negative')
+    _a('-c', '--count'
+        , help = 'Use this many bytes of input file; can be negative')
     _a('--hex'
         , help = 'Hexadecimal string of data')
     _a('--str'
@@ -186,16 +190,18 @@ x^W.'''
     if args.poly is None:
         raise SystemExit(' ** Need to specify polynomial')
 
-    P = int(args.poly, 0)
+    any_int = lambda x: 0 if x is None else int(x, 0)
+
+    P = any_int(args.poly)
     if args.width is None:
         W = P.bit_length()
         P <<= 1
         P |= 1
         P ^= 1 << W
     else:
-        W = int(args.width, 0)
-    xi = int(args.xor_in, 0)
-    xo = int(args.xor_out, 0)
+        W = any_int(args.width)
+    xi = any_int(args.xor_in)
+    xo = any_int(args.xor_out)
     ri = args.reflect_input
     ro = args.reflect_output
 
@@ -207,9 +213,18 @@ x^W.'''
 
     if args.input is not None:
         from mmap import mmap, ACCESS_READ
+
+        skip = any_int(args.skip)
+        count = any_int(args.count)
         with open(args.input, 'rb') as inf, mmap(
                 inf.fileno(), 0, access = ACCESS_READ) as mm:
-            crc = fn(P, W, mm, xi, xo, ri, ro)
+            if skip < 0:
+                skip = max(0, len(mm) + skip)
+            if count <= 0:
+                count = len(mm) + count
+                if count <= 0:
+                    raise SystemExit('Invalid calculated count: {count}')
+            crc = fn(P, W, mm[skip : skip + count], xi, xo, ri, ro)
     elif args.hex is not None:
         from binascii import unhexlify
         crc = fn(P, W, unhexlify(args.hex), xi, xo, ri, ro)
