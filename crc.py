@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+import os
+import sys
+
+__version__ = '1.1.0'
+
 def _bytes(x):
     try:
         return memoryview(x)
@@ -130,21 +135,29 @@ def print_LUT(poly, width):
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description = '''
-        Compute a CRC over data supplied via the command line, a file or stdin
-        '''
+    class HelpFormatter(argparse.RawTextHelpFormatter
+            , argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    parser = argparse.ArgumentParser(
+        description = 'Compute a CRC over supplied data'
         , epilog = '''
-        The calculations are based on the common case of taking the input a
-        byte at a time.  If, for example, a CRC4 is needed for an odd number of
-        nybbles, then you'll have to finagle things a bit to get the answer.
-        If (for some strange reason) multiple data sources are specified, the
-        data-input precedence is: --input > --hex > --str > stdin.
-        '''
-        , formatter_class = argparse.ArgumentDefaultsHelpFormatter)
+The calculations are based on the common case of taking the input a byte at a
+time.  If, for example, a CRC4 is needed for an odd number of nybbles, then
+you'll have to finagle things a bit to get the answer.  If (for some strange
+reason) multiple data sources are specified, the data-input precedence is:
+--input > --hex > --str > stdin.
+
+Supplying only the polynomial without specifying the width implies that the
+polynomial is given in implicit +1 notation (Koopman's notation) and thus the
+width will be derived from the polynomial.  If the width is supplied along with
+the polynomial, the it's assumed to be the "normal" notation with an implied
+x^W.'''
+        , formatter_class = HelpFormatter)
     _a = parser.add_argument
-    _a('-p', '--poly', required = True
+    _a('-p', '--poly'
         , help = 'Polynomial to use')
-    _a('-w', '--width', required = True
+    _a('-w', '--width'
         , help = 'Width of the CRC in bits')
     _a('-x', '--xor-in', default = '0'
         , help = 'The input XOR value')
@@ -162,17 +175,31 @@ def main():
         , help = 'String of data (encoded using locale\'s encoding)')
     _a('--lut', action = 'store_true'
         , help = 'Print LUT to stdout as C-style array using stdints, then exit')
+    _a('--version', action = 'store_true'
+        , help = 'Print version and exit')
     args = parser.parse_args()
 
+    if args.version:
+        print(f'{os.path.basename(sys.argv[0])} {__version__}')
+        sys.exit(0)
+
+    if args.poly is None:
+        raise SystemExit(' ** Need to specify polynomial')
+
     P = int(args.poly, 0)
-    W = int(args.width, 0)
+    if args.width is None:
+        W = P.bit_length()
+        P <<= 1
+        P |= 1
+        P ^= 1 << W
+    else:
+        W = int(args.width, 0)
     xi = int(args.xor_in, 0)
     xo = int(args.xor_out, 0)
     ri = args.reflect_input
     ro = args.reflect_output
 
     if args.lut:
-        import sys
         print_LUT(P, W)
         sys.exit(0)
 
@@ -190,7 +217,6 @@ def main():
         from locale import getpreferredencoding
         crc = fn(P, W, args.str.encode(getpreferredencoding()), xi, xo, ri, ro)
     else:
-        import sys
         from functools import partial
         from io import DEFAULT_BUFFER_SIZE
         inf = sys.stdin.buffer
