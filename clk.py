@@ -6,10 +6,11 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.0.2'
+__version__ = '1.2.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
+_insert = 'insert into clocks values(?,?);'
 
 class SQLite3Connection(sqlite3.Connection):
     def __init__(self, *args, **kwargs):
@@ -30,11 +31,45 @@ def hms(s):
     return h, m, s
 
 def gui(database):
-    from PyQt5.QtCore import QTimer
-    from PyQt5.QtWidgets import (
+    from PySide6.QtCore import Qt, QDateTime, QTimer
+    from PySide6.QtWidgets import (
         QApplication, QPushButton, QLabel, QProgressBar
         , QHBoxLayout, QVBoxLayout, QWidget, QMainWindow
+        , QDialog, QDialogButtonBox, QDateTimeEdit, QCheckBox
     )
+
+    class DateTimeInOutDialog(QDialog):
+        def __init__(self, parent=None):
+            super().__init__(parent)
+
+            vbox = QVBoxLayout(self)
+            self.setLayout(vbox)
+
+            e = QDateTimeEdit(QDateTime.currentDateTime(), parent=self)
+            e.setDisplayFormat('yyyy-MM-dd hh:mm:ss')
+            e.setCalendarPopup(True)
+            vbox.addWidget(e)
+            self.edit = e
+
+            hbox = QHBoxLayout()
+            cb = QCheckBox('In', parent=self)
+            hbox.addWidget(cb)
+            self.checkbox = cb
+
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=self
+            )
+            hbox.addWidget(buttons)
+            vbox.addLayout(hbox)
+
+            buttons.accepted.connect(self.accept)
+            buttons.rejected.connect(self.reject)
+
+        def timestamp(self):
+            return float(self.edit.dateTime().toSecsSinceEpoch())
+
+        def in_(self):
+            return self.checkbox.isChecked()
 
     class ClockInOut(QWidget):
         def __init__(self, parent = None):
@@ -84,6 +119,26 @@ def gui(database):
             self.in_out()
             button.clicked.connect(self.in_out)
 
+            self.setFocusPolicy(Qt.StrongFocus)
+
+        def keyReleaseEvent(self, event):
+            # Use CTRL-T to edit the date/time, otherwise bubble up.
+            if '\x14' != event.text():
+                return super().keyReleaseEvent(event)
+
+            dt = DateTimeInOutDialog(self)
+            dt.setWindowTitle('Date/Time')
+            if QDialog.Rejected == dt.exec():
+                return
+
+            with SQLite3Connection(self.database) as conn:
+                cur = conn.cursor()
+                cur.execute(_schema)
+                cur.execute(_insert, (dt.timestamp(), dt.in_()))
+
+            self.in_ = None
+            self.in_out()
+
         def update_totals(self):
             h, m, s = hms(self.day_total)
             self.day_total_label.setText(f'{h:d}:{m:02d}:{s:02d}')
@@ -121,8 +176,7 @@ def gui(database):
                     self.in_ = in_
                     self.button.setText(self.text[in_])
                 else:
-                    cur.execute('insert into clocks values(?,?);'
-                        , (now_ts, self.in_ ^ 1))
+                    cur.execute(_insert, (now_ts, self.in_ ^ 1))
                     self.in_ ^= 1
                     self.button.setText(self.text[self.in_])
                 if self.in_:
@@ -145,7 +199,7 @@ def gui(database):
     m.setWindowTitle('Clock In/Out')
     m.move(0, 0)
     m.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 def day_totals(cur):
     now = datetime.now()
