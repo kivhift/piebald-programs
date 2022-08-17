@@ -5,8 +5,9 @@ import sqlite3
 import sys
 
 from datetime import datetime, time, timedelta
+from math import sqrt
 
-__version__ = '1.2.0'
+__version__ = '1.3.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -34,7 +35,7 @@ def gui(database):
     from PySide6.QtCore import Qt, QDateTime, QTimer
     from PySide6.QtWidgets import (
         QApplication, QPushButton, QLabel, QProgressBar
-        , QHBoxLayout, QVBoxLayout, QWidget, QMainWindow
+        , QGridLayout, QHBoxLayout, QVBoxLayout, QWidget, QMainWindow
         , QDialog, QDialogButtonBox, QDateTimeEdit, QCheckBox
     )
 
@@ -80,37 +81,40 @@ def gui(database):
             self.in_ = None
             self.text = ['Clock ' + x for x in 'In Out'.split()]
 
+            self.seconds_per_day = 8 * 3600
+            self.seconds_per_week = 5 * self.seconds_per_day
+            self.done_time_fmt = '%H:%M:%S'
+
             timer = self.timer = QTimer(self)
             button = self.button = QPushButton('Clock')
             day_total_label = self.day_total_label = QLabel()
             week_total_label = self.week_total_label = QLabel()
             day_progress = self.day_progress = QProgressBar()
             week_progress = self.week_progress = QProgressBar()
+            whats_done_label = self.whats_done_label = QLabel('Finish (?):')
+            done_at_label = self.done_at_label = QLabel('??:??:??')
 
-            v_layout = QVBoxLayout()
+            layout = QGridLayout()
+            self.setLayout(layout)
+            layout.setColumnStretch(2, 2)
 
-            v_layout.addWidget(button)
+            align_right = Qt.Alignment() | Qt.AlignRight
+            layout.addWidget(QLabel('Day:'), 0, 0, alignment=align_right)
+            layout.addWidget(day_total_label, 0, 1, alignment=align_right)
+            layout.addWidget(day_progress, 0, 2, 1, 2)
 
-            h_layout = QHBoxLayout()
-            h_layout.addWidget(QLabel('Day:'))
-            h_layout.addWidget(day_total_label)
-            v_layout.addLayout(h_layout)
+            layout.addWidget(QLabel('Week:'), 1, 0, alignment=align_right)
+            layout.addWidget(week_total_label, 1, 1, alignment=align_right)
+            layout.addWidget(week_progress, 1, 2, 1, 2)
 
-            v_layout.addWidget(day_progress)
+            layout.addWidget(whats_done_label, 2, 0, alignment=align_right)
+            layout.addWidget(done_at_label, 2, 1, alignment=align_right)
+            layout.addWidget(button, 2, 3)
 
-            h_layout = QHBoxLayout()
-            h_layout.addWidget(QLabel('Week:'))
-            h_layout.addWidget(week_total_label)
-            v_layout.addLayout(h_layout)
-
-            v_layout.addWidget(week_progress)
-
-            self.setLayout(v_layout)
-
-            day_progress.setRange(0, 8 * 3600)
+            day_progress.setRange(0, self.seconds_per_day)
             day_progress.setValue(self.day_total)
 
-            week_progress.setRange(0, 5 * day_progress.maximum())
+            week_progress.setRange(0, self.seconds_per_week)
             week_progress.setValue(self.week_total)
 
             timer.setInterval(1000)
@@ -159,7 +163,8 @@ def gui(database):
             self.update_totals()
 
         def in_out(self):
-            now_ts = datetime.now().timestamp()
+            now = datetime.now()
+            now_ts = now.timestamp()
             with SQLite3Connection(self.database) as conn:
                 cur = conn.cursor()
                 cur.execute(_schema)
@@ -190,6 +195,25 @@ def gui(database):
                 if self.in_:
                     self.last_in_day_total = self.day_total
                     self.last_in_week_total = self.week_total
+
+                    day_to_go = timedelta(
+                        seconds = self.seconds_per_day - self.last_in_day_total
+                    )
+                    week_to_go = timedelta(
+                        seconds = self.seconds_per_week - self.last_in_week_total
+                    )
+
+                    day_done, week_done = now + day_to_go, now + week_to_go
+                    if week_done <= day_done:
+                        self.whats_done_label.setText('Finish (W):')
+                        self.done_at_label.setText(
+                            week_done.strftime(self.done_time_fmt)
+                        )
+                    else:
+                        self.whats_done_label.setText('Finish (D):')
+                        self.done_at_label.setText(
+                            day_done.strftime(self.done_time_fmt)
+                        )
                 self.set_progress()
                 self.update_totals()
 
@@ -197,6 +221,11 @@ def gui(database):
     m = QMainWindow()
     m.setCentralWidget(ClockInOut())
     m.setWindowTitle('Clock In/Out')
+    m.adjustSize()
+    s = m.size()
+    _2phi = 1 + sqrt(5)
+    s.setWidth(round(_2phi * s.height()))
+    m.resize(s)
     m.move(0, 0)
     m.show()
     sys.exit(app.exec())
