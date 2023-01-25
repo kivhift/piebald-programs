@@ -7,7 +7,7 @@ import sys
 from datetime import datetime, time, timedelta
 from math import sqrt
 
-__version__ = '1.3.0'
+__version__ = '1.4.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -230,6 +230,18 @@ def gui(database):
     m.show()
     sys.exit(app.exec())
 
+def relative_work_week_start(now, start_weekday=5):
+    days_from_start = now.weekday()
+
+    if days_from_start >= start_weekday:
+        days_from_start -= start_weekday
+    else:
+        days_from_start += (7 - start_weekday)
+
+    return datetime.combine(
+        (now - days_from_start * timedelta(days = 1)).date(), time.min
+    )
+
 def day_totals(cur):
     now = datetime.now()
     day_delta = timedelta(days = 1)
@@ -237,8 +249,7 @@ def day_totals(cur):
     _t = totals.append
 
     # This could be today and that's OK.
-    midnight = datetime.combine(
-        (now - now.weekday() * day_delta).date(), time.min)
+    midnight = relative_work_week_start(now)
 
     if 0 == cur.execute(f'''select count(*) from clocks
             where timestamp >= {midnight.timestamp()};''').fetchone()[0]:
@@ -270,10 +281,8 @@ def day_totals(cur):
     return totals
 
 def hours(database):
-    now = datetime.now()
-    now_weekday = now.weekday()
     day_delta = timedelta(days = 1)
-    date = (now - now_weekday * day_delta).date()
+    date = relative_work_week_start(datetime.now())
     with SQLite3Connection(database) as conn:
         grand_total = 0.0
         cur = conn.cursor()
@@ -282,7 +291,7 @@ def hours(database):
             if total > 0.0:
                 grand_total += total
                 h, m, s = hms(total)
-                print(f'{date}: {h:3d}:{m:02d}:{s:02d}')
+                print(f'{date.date()}: {h:3d}:{m:02d}:{s:02d}')
             date += day_delta
         if grand_total > 0.0:
             h, m, s = hms(grand_total)
