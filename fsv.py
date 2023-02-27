@@ -11,7 +11,6 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
-    QDoubleSpinBox,
     QFileDialog,
     QGraphicsScene,
     QGraphicsView,
@@ -19,10 +18,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QSpinBox,
 )
-from PySide6.QtGui import QImage, QPixmap, QAction, QTransform, QBrush
-
-# Todo:
-# - be able to specify slice from/to
+from PySide6.QtGui import QAction, QBrush, QImage, QPixmap, QTransform,
 
 # This function (and its partner-in-crime below) are adapted from the
 # Summerfield book; Rapid GUI Programming with Python and Qt.
@@ -71,6 +67,7 @@ class FileSliceView(QMainWindow):
         scale=1,
         pixel_format=None,
     ):
+        pixel_format = pixel_format or 'RGB 888'
         if pixel_format not in _pixels:
             raise ValueError(f'Invalid pixel format: {pixel_format}')
 
@@ -112,6 +109,9 @@ class FileSliceView(QMainWindow):
         mb = self._menubar = self.menuBar()
         file_menu = mb.addMenu('&File')
         add_actions(file_menu, (foa, None, xa))
+
+        x = self._filename = QLabel(self)
+        sb.addPermanentWidget(x)
 
         # Tried to use sys.maxsize but Shiboken complained about it not fitting
         # within a signed, 4-byte integer when calling .setRange()...
@@ -223,6 +223,8 @@ class FileSliceView(QMainWindow):
 
         self._update_image()
 
+        self._filename.setText(pathlib.Path(filename).name)
+
     @Slot()
     def adjust_scale(self, value):
         xform = self._xform
@@ -257,6 +259,7 @@ arg_parser = argparse.ArgumentParser(
 )
 _a = arg_parser.add_argument
 _a('-f', '--filename', help='File to use as input')
+_a('-l', '--length', default=0, type=non_negative_int, help='Slice length to use')
 _a(
     '-p',
     '--pixel-format',
@@ -264,13 +267,16 @@ _a(
     choices=list(sorted(_pixels)),
     help='Pixel format to use'
 )
-_a('-s', '--scale', default=1, type=positive_int, help='Scale to use')
+_a('-s', '--start', default=0, type=non_negative_int, help='Starting offset to use')
+_a('-S', '--scale', default=1, type=positive_int, help='Scale to use')
 _a('-w', '--width', default=0, type=non_negative_int, help='Width to use')
 args = arg_parser.parse_args()
 
 app = QApplication()
 w = FileSliceView(
     filename=args.filename,
+    start=args.start,
+    length=args.length,
     width=args.width,
     scale=args.scale,
     pixel_format=args.pixel_format,
