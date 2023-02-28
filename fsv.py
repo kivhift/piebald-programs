@@ -11,21 +11,30 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDockWidget,
     QFileDialog,
     QGraphicsScene,
     QGraphicsView,
     QLabel,
     QMainWindow,
+    QPlainTextEdit,
     QSpinBox,
 )
-from PySide6.QtGui import QAction, QBrush, QImage, QPixmap, QTransform,
+from PySide6.QtGui import (
+    QAction,
+    QBrush,
+    QFont,
+    QImage,
+    QPixmap,
+    QTransform,
+)
 
 # This function (and its partner-in-crime below) are adapted from the
 # Summerfield book; Rapid GUI Programming with Python and Qt.
 def create_action(
-    parent, text, shortcut=None, tip=None, checkable=False
+    parent, text, shortcut=None, tip=None, checkable=False, action=None
 ):
-    action = QAction(text, parent)
+    action = action or QAction(text, parent)
 
     if shortcut is not None:
         action.setShortcut(shortcut)
@@ -80,6 +89,7 @@ class FileSliceView(QMainWindow):
         self.resize(size)
 
         self._image = None
+        self._mem_view = None
         xform = self._xform = QTransform()
 
         sb = self._status_bar = self.statusBar()
@@ -150,8 +160,81 @@ class FileSliceView(QMainWindow):
         pcb.currentTextChanged.connect(self.adjust_image)
         sb.addPermanentWidget(pcb)
 
+        hd = self._hexdump = QPlainTextEdit(self)
+        hd.setReadOnly(True)
+        hd.setLineWrapMode(QPlainTextEdit.NoWrap)
+        font = QFont('Consolas', 8)
+        font.setStyleHint(QFont.Monospace)
+        hd.setFont(font)
+
+        dw = self._dock_widget = QDockWidget('Hexdump', self)
+        dw.setVisible(False)
+        dw.setWidget(hd)
+        dact = create_action(
+            parent=None,
+            text=None,
+            shortcut='Ctrl+H',
+            tip='View hexdump',
+            checkable=True,
+            action=dw.toggleViewAction(),
+        )
+        dact.triggered.connect(self._update_hexdump)
+        view_menu = mb.addMenu('&View')
+        add_actions(view_menu, (dact,))
+        self.addDockWidget(Qt.BottomDockWidgetArea, dw)
+
+        hex_tt = self._hex_tt = [None] * 256
+        for i in range(len(hex_tt)):
+            hex_tt[i] = f'{i:02x}'
+
+        dot = '.'
+        prn_tt = self._prn_tt = [dot] * 256
+        for i in range(32, 127):
+            prn_tt[i] = chr(i)
+
         if filename is not None:
             self.open_file(filename)
+
+    def _update_hexdump(self):
+        if self._mem_view is None or not self._dock_widget.isVisible():
+            return
+
+        hd = self._hexdump
+        hd.clear()
+
+        hex_tt = self._hex_tt
+        prn_tt = self._prn_tt
+        buffer = self._mem_view
+        start_address = self._start_sb.value()
+
+        sz = len(buffer)
+        fmt = f'{{:0{len(hex(start_address + sz)) - 2}x}}  {{:23s}}  {{:23s}}  |{{}}|'
+        chunk_sz = 16
+        chunk_half_sz = chunk_sz >> 1
+        last_chunk = memoryview(b'')
+        skipped = False
+        lines = []
+        _l = lines.append
+        for offset in range(0, sz, chunk_sz):
+            chunk = memoryview(buffer[offset : min(offset + chunk_sz, sz)])
+            if chunk == last_chunk:
+                skipped = True
+                continue
+            if skipped:
+                _l('*')
+                skipped = False
+            _l(fmt.format(
+                offset + start_address,
+                ' '.join(hex_tt[b] for b in chunk[:chunk_half_sz]),
+                ' '.join(hex_tt[b] for b in chunk[chunk_half_sz:]),
+                ''.join(prn_tt[b] for b in chunk),
+            ))
+            last_chunk = chunk
+        if skipped:
+            _l('*')
+        _l(f'{sz:x}')
+
+        hd.setPlainText('\n'.join(lines))
 
     def _update_image(self):
         mm = self._mmap
@@ -186,8 +269,9 @@ class FileSliceView(QMainWindow):
         W = self._width_sb.value() or int(math.sqrt(pixel_count))
         H = pixel_count // W
 
+        mem_view = self._mem_view = memoryview(mm)[start : start + length]
         image = QImage(
-            memoryview(mm)[start : start + length],
+            mem_view,
             W,
             H,
             W * pixel_type.bytes_per_pixel,
@@ -211,6 +295,8 @@ class FileSliceView(QMainWindow):
         width_sb.setValue(W)
 
         self._image = image
+
+        self._update_hexdump()
 
     @Slot()
     def open_file(self, filename=None):
@@ -240,14 +326,14 @@ class FileSliceView(QMainWindow):
         self._update_image()
 
 def non_negative_int(x):
-    v = int(x)
+    v = int(x, 0)
     if v < 0:
         raise ValueError(f'Value should non-negative: {v}')
 
     return v
 
 def positive_int(x):
-    v = int(x)
+    v = int(x, 0)
     if v < 1:
         raise ValueError(f'Value should be positive: {v}')
 
