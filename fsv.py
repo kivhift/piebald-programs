@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 
+# TODO:
+# - Use QPlainTextEdit.verticalScrollBar.valueChanged along with an iterator
+# for the hexdump to be able to add lines at the bottom when needed instead of
+# dumping everything to the widget up front since this is slow for larger
+# files. The viewable part could be filled and then lines added when someone
+# scrolls to the bottom.
+# - Use mouseMoveEvent for QGraphics* to be able to display the corresponding
+# offset in the file that's being pointed to. This would make it easier to
+# determine sub-regions of the file that may be of interest.
+
 import argparse
 import collections
 import math
@@ -98,6 +108,8 @@ class FileSliceView(QMainWindow):
         scene = self._scene = QGraphicsScene(self)
         view = self._view = QGraphicsView(scene)
         view.setTransform(xform)
+        view.setMouseTracking(True)
+        # view.mouseMoveEvent.connect(self.print_view_coords)
 
         brush = QBrush()
         brush.setStyle(Qt.DiagCrossPattern)
@@ -181,7 +193,7 @@ class FileSliceView(QMainWindow):
         dact.triggered.connect(self._update_hexdump)
         view_menu = mb.addMenu('&View')
         add_actions(view_menu, (dact,))
-        self.addDockWidget(Qt.BottomDockWidgetArea, dw)
+        self.addDockWidget(Qt.RightDockWidgetArea, dw)
 
         hex_tt = self._hex_tt = [None] * 256
         for i in range(len(hex_tt)):
@@ -194,6 +206,10 @@ class FileSliceView(QMainWindow):
 
         if filename is not None:
             self.open_file(filename)
+
+    @Slot()
+    def print_view_coords(self, e):
+        print(e)
 
     def _update_hexdump(self):
         if self._mem_view is None or not self._dock_widget.isVisible():
