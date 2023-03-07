@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
 
-import os
 import sqlite3
 import sys
 
 from datetime import datetime, time, timedelta
-from math import sqrt
 
-__version__ = '1.4.0'
+__version__ = '1.5.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
 _insert = 'insert into clocks values(?,?);'
 
+_day_delta = timedelta(days=1)
+
 class SQLite3Connection(sqlite3.Connection):
     def __init__(self, *args, **kwargs):
-        super(SQLite3Connection, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         self.row_factory = sqlite3.Row
         self.text_factory = str if 2 == sys.version_info.major else bytes
 
     def __del__(self):
         self.close()
-        s = super(SQLite3Connection, self)
+        s = super()
         if hasattr(s, '__del__'): s.__del__()
 
 def hms(s):
@@ -32,6 +32,7 @@ def hms(s):
     return h, m, s
 
 def gui(database):
+    from math import sqrt
     from PySide6.QtCore import Qt, QDateTime, QTimer
     from PySide6.QtWidgets import (
         QApplication, QPushButton, QLabel, QProgressBar
@@ -73,24 +74,24 @@ def gui(database):
             return self.checkbox.isChecked()
 
     class ClockInOut(QWidget):
-        def __init__(self, parent = None):
-            super(ClockInOut, self).__init__(parent)
+        def __init__(self, parent=None):
+            super().__init__(parent)
             self.database = database
             self.day_total = 0
-            self.week_total = 0
+            self.pay_period_total = 0
             self.in_ = None
             self.text = ['Clock ' + x for x in 'In Out'.split()]
 
             self.seconds_per_day = 8 * 3600
-            self.seconds_per_week = 5 * self.seconds_per_day
+            self.seconds_per_pay_period = 10 * self.seconds_per_day
             self.done_time_fmt = '%H:%M:%S'
 
             timer = self.timer = QTimer(self)
             button = self.button = QPushButton('Clock')
             day_total_label = self.day_total_label = QLabel()
-            week_total_label = self.week_total_label = QLabel()
+            pay_period_total_label = self.pay_period_total_label = QLabel()
             day_progress = self.day_progress = QProgressBar()
-            week_progress = self.week_progress = QProgressBar()
+            pay_period_progress = self.pay_period_progress = QProgressBar()
             whats_done_label = self.whats_done_label = QLabel('Finish (?):')
             done_at_label = self.done_at_label = QLabel('??:??:??')
 
@@ -103,9 +104,9 @@ def gui(database):
             layout.addWidget(day_total_label, 0, 1, alignment=align_right)
             layout.addWidget(day_progress, 0, 2, 1, 2)
 
-            layout.addWidget(QLabel('Week:'), 1, 0, alignment=align_right)
-            layout.addWidget(week_total_label, 1, 1, alignment=align_right)
-            layout.addWidget(week_progress, 1, 2, 1, 2)
+            layout.addWidget(QLabel('Period:'), 1, 0, alignment=align_right)
+            layout.addWidget(pay_period_total_label, 1, 1, alignment=align_right)
+            layout.addWidget(pay_period_progress, 1, 2, 1, 2)
 
             layout.addWidget(whats_done_label, 2, 0, alignment=align_right)
             layout.addWidget(done_at_label, 2, 1, alignment=align_right)
@@ -114,8 +115,8 @@ def gui(database):
             day_progress.setRange(0, self.seconds_per_day)
             day_progress.setValue(self.day_total)
 
-            week_progress.setRange(0, self.seconds_per_week)
-            week_progress.setValue(self.week_total)
+            pay_period_progress.setRange(0, self.seconds_per_pay_period)
+            pay_period_progress.setValue(self.pay_period_total)
 
             timer.setInterval(1000)
             timer.timeout.connect(self.update_progress)
@@ -146,19 +147,19 @@ def gui(database):
         def update_totals(self):
             h, m, s = hms(self.day_total)
             self.day_total_label.setText(f'{h:d}:{m:02d}:{s:02d}')
-            h, m, s = hms(self.week_total)
-            self.week_total_label.setText(f'{h:d}:{m:02d}:{s:02d}')
+            h, m, s = hms(self.pay_period_total)
+            self.pay_period_total_label.setText(f'{h:d}:{m:02d}:{s:02d}')
 
         def set_progress(self):
             p = self.day_progress
             p.setValue(min(p.maximum(), self.day_total))
-            p = self.week_progress
-            p.setValue(min(p.maximum(), self.week_total))
+            p = self.pay_period_progress
+            p.setValue(min(p.maximum(), self.pay_period_total))
 
         def update_progress(self):
             delta = datetime.now().timestamp() - self.last_in_ts
             self.day_total = round(self.last_in_day_total + delta)
-            self.week_total = round(self.last_in_week_total + delta)
+            self.pay_period_total = round(self.last_in_pay_period_total + delta)
             self.set_progress()
             self.update_totals()
 
@@ -191,23 +192,26 @@ def gui(database):
                     self.timer.stop()
                 totals = day_totals(cur)
                 self.day_total = round(totals[-1])
-                self.week_total = round(sum(totals))
+                self.pay_period_total = round(sum(totals))
                 if self.in_:
                     self.last_in_day_total = self.day_total
-                    self.last_in_week_total = self.week_total
+                    self.last_in_pay_period_total = self.pay_period_total
 
                     day_to_go = timedelta(
                         seconds = self.seconds_per_day - self.last_in_day_total
                     )
-                    week_to_go = timedelta(
-                        seconds = self.seconds_per_week - self.last_in_week_total
+                    pay_period_to_go = timedelta(
+                        seconds =
+                            self.seconds_per_pay_period
+                            - self.last_in_pay_period_total
                     )
 
-                    day_done, week_done = now + day_to_go, now + week_to_go
-                    if week_done <= day_done:
-                        self.whats_done_label.setText('Finish (W):')
+                    day_done = now + day_to_go
+                    pay_period_done = now + pay_period_to_go
+                    if pay_period_done <= day_done:
+                        self.whats_done_label.setText('Finish (P):')
                         self.done_at_label.setText(
-                            week_done.strftime(self.done_time_fmt)
+                            pay_period_done.strftime(self.done_time_fmt)
                         )
                     else:
                         self.whats_done_label.setText('Finish (D):')
@@ -230,39 +234,33 @@ def gui(database):
     m.show()
     sys.exit(app.exec())
 
-def relative_work_week_start(now, start_weekday=5):
-    days_from_start = now.weekday()
+def relative_pay_period_start(now):
+    # At the time of writing, the last period start is 2023-01-14.
+    known_start = datetime.fromisoformat('2023-01-14')
+    period_length = timedelta(days=14)
+    delta = now - known_start
 
-    if days_from_start >= start_weekday:
-        days_from_start -= start_weekday
-    else:
-        days_from_start += (7 - start_weekday)
+    return now - (delta % period_length)
 
-    return datetime.combine(
-        (now - days_from_start * timedelta(days = 1)).date(), time.min
-    )
-
-def day_totals(cur):
+def day_totals(cur, start=None):
     now = datetime.now()
-    day_delta = timedelta(days = 1)
     totals = []
     _t = totals.append
 
-    # This could be today and that's OK.
-    midnight = relative_work_week_start(now)
+    start = start or relative_pay_period_start(now)
 
     if 0 == cur.execute(f'''select count(*) from clocks
-            where timestamp >= {midnight.timestamp()};''').fetchone()[0]:
+            where timestamp >= {start.timestamp()};''').fetchone()[0]:
         return totals
 
-    while midnight < now:
-        next_midnight = midnight + day_delta
+    while start < now:
+        next_start = start + _day_delta
         total = 0.0
-        last_in = midnight.timestamp()
+        last_in = start.timestamp()
         has_in_out = False
         for ts, in_ in cur.execute(f'''select timestamp, in_ from clocks
-                where timestamp >= {midnight.timestamp()}
-                and timestamp < {next_midnight.timestamp()}
+                where timestamp >= {start.timestamp()}
+                and timestamp < {next_start.timestamp()}
                 order by timestamp asc;'''):
             has_in_out = True
             if in_:
@@ -271,43 +269,42 @@ def day_totals(cur):
                 total += ts - last_in
                 last_in = None
         if has_in_out and last_in is not None:
-            if now < next_midnight:
+            if now < next_start:
                 total += now.timestamp() - last_in
             else:
-                total += next_midnight.timestamp() - last_in
+                total += next_start.timestamp() - last_in
         _t(total)
-        midnight = next_midnight
+        start = next_start
 
     return totals
 
 def hours(database):
-    day_delta = timedelta(days = 1)
-    date = relative_work_week_start(datetime.now())
+    date = relative_pay_period_start(datetime.now())
     with SQLite3Connection(database) as conn:
         grand_total = 0.0
         cur = conn.cursor()
         cur.execute(_schema)
-        for total in day_totals(cur):
+        for total in day_totals(cur, date):
             if total > 0.0:
                 grand_total += total
                 h, m, s = hms(total)
                 print(f'{date.date()}: {h:3d}:{m:02d}:{s:02d}')
-            date += day_delta
+            date += _day_delta
         if grand_total > 0.0:
             h, m, s = hms(grand_total)
             print(f'     Total: {h:3d}:{m:02d}:{s:02d}')
 
-def main(args_list = None):
+def main(args_list=None):
     import argparse
+    import os
+
     arg_parser = argparse.ArgumentParser(
-        description = 'Use a SQLite database to keep up with clock ins/outs')
+        description = 'Use a SQLite database to keep up with clock ins/outs'
+    )
     _a = arg_parser.add_argument
-    _a('--database'
-        , help = 'File to use for clock ins/outs')
-    _a('--gui', action = 'store_true'
-        , help = 'Show the GUI')
-    _a('--version', action = 'store_true'
-        , help = 'Show version')
+    _a('--database', help = 'File to use for clock ins/outs')
+    _a('--gui', action = 'store_true', help = 'Show the GUI')
+    _a('--version', action = 'store_true', help = 'Show version')
     args = arg_parser.parse_args(args_list or sys.argv[1:])
 
     if args.version:
