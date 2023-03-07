@@ -6,9 +6,6 @@
 # dumping everything to the widget up front since this is slow for larger
 # files. The viewable part could be filled and then lines added when someone
 # scrolls to the bottom.
-# - Use mouseMoveEvent for QGraphics* to be able to display the corresponding
-# offset in the file that's being pointed to. This would make it easier to
-# determine sub-regions of the file that may be of interest.
 
 import argparse
 import collections
@@ -17,7 +14,7 @@ import mmap
 import pathlib
 import sys
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, Signal, Slot, QPointF
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -25,10 +22,12 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGraphicsScene,
     QGraphicsView,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
     QPlainTextEdit,
     QSpinBox,
+    QWidget,
 )
 from PySide6.QtGui import (
     QAction,
@@ -76,6 +75,33 @@ _pixels = {
 }
 del _f, _p
 
+class GraphicsScene(QGraphicsScene):
+    mousePressPosition = Signal(QPointF)
+
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+
+    def mousePressEvent(self, event):
+        self.mousePressPosition.emit(event.scenePos())
+
+class OffsetInfo(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+
+        font = QFont('Consolas', 8)
+        font.setStyleHint(QFont.Monospace)
+
+        layout = QHBoxLayout()
+        self.offset = QLabel()
+        layout.addWidget(self.offset)
+        self.values = QLabel()
+        self.values.setFont(font)
+        layout.addWidget(self.values)
+
+        layout.addStretch()
+
+        self.setLayout(layout)
+
 class FileSliceView(QMainWindow):
     def __init__(
         self,
@@ -101,15 +127,16 @@ class FileSliceView(QMainWindow):
         self._image = None
         self._mem_view = None
         xform = self._xform = QTransform()
+        xform.scale(scale, scale)
 
         sb = self._status_bar = self.statusBar()
         self._status_msg_timeout = 3000
 
-        scene = self._scene = QGraphicsScene(self)
+        scene = self._scene = GraphicsScene(self)
+        scene.mousePressPosition.connect(self.show_byte_offset)
+
         view = self._view = QGraphicsView(scene)
         view.setTransform(xform)
-        view.setMouseTracking(True)
-        # view.mouseMoveEvent.connect(self.print_view_coords)
 
         brush = QBrush()
         brush.setStyle(Qt.DiagCrossPattern)
@@ -179,7 +206,7 @@ class FileSliceView(QMainWindow):
         font.setStyleHint(QFont.Monospace)
         hd.setFont(font)
 
-        dw = self._dock_widget = QDockWidget('Hexdump', self)
+        dw = self._hexdump_dock = QDockWidget('Hexdump', self)
         dw.setVisible(False)
         dw.setWidget(hd)
         dact = create_action(
@@ -204,15 +231,55 @@ class FileSliceView(QMainWindow):
         for i in range(32, 127):
             prn_tt[i] = chr(i)
 
+        oi = self._offset_info = OffsetInfo(self)
+
+        oid = self._offset_info_dock = QDockWidget('Offset Info', self)
+        oid.setVisible(False)
+        oid.setWidget(oi)
+        self.addDockWidget(Qt.BottomDockWidgetArea, oid)
+
         if filename is not None:
             self.open_file(filename)
 
-    @Slot()
-    def print_view_coords(self, e):
-        print(e)
+    @Slot(QPointF)
+    def show_byte_offset(self, p):
+        if (im := self._image) is None:
+            return
+
+        x = p.x()
+        if x < 0.0:
+            return
+
+        # Truncate towards zero.
+        x = int(x)
+        w = im.width()
+        if x >= w:
+            return
+
+        y = p.y()
+        if y < 0.0:
+            return
+
+        # Similarly, truncate towards zero.
+        y = int(y)
+        if y >= im.height():
+            return
+
+        offset = self._bytes_per_pixel * (y * w + x)
+
+        oi = self._offset_info
+        oi.offset.setText(f'{offset} / 0x{offset:x} / ')
+
+        v = self._mem_view[offset : offset + self._bytes_per_pixel]
+        oi.values.setText(
+            f'{" ".join(self._hex_tt[b] for b in v)}'
+            f'  |{"".join(self._prn_tt[b] for b in v)}|'
+        )
+
+        self._offset_info_dock.setVisible(True)
 
     def _update_hexdump(self):
-        if self._mem_view is None or not self._dock_widget.isVisible():
+        if self._mem_view is None or not self._hexdump_dock.isVisible():
             return
 
         hd = self._hexdump
@@ -311,6 +378,7 @@ class FileSliceView(QMainWindow):
         width_sb.setValue(W)
 
         self._image = image
+        self._bytes_per_pixel = pixel_type.bytes_per_pixel
 
         self._update_hexdump()
 
