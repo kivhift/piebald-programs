@@ -38,6 +38,8 @@ from PySide6.QtGui import (
     QTransform,
 )
 
+__version__ = '1.5.0'
+
 # This function (and its partner-in-crime below) are adapted from the
 # Summerfield book; Rapid GUI Programming with Python and Qt.
 def create_action(
@@ -65,13 +67,15 @@ def add_actions(target, actions):
         else:
             target.addAction(action)
 
-PixelType = collections.namedtuple('PixelType', 'format bytes_per_pixel')
+PixelType = collections.namedtuple('PixelType', 'format bits_per_pixel')
 _f, _p = QImage.Format, PixelType
 _pixels = {
-    'Gray 8': _p(_f.Format_Grayscale8, 1),
-    'Gray 16': _p(_f.Format_Grayscale16, 2),
-    'BGR 888': _p(_f.Format_BGR888, 3),
-    'RGB 888': _p(_f.Format_RGB888, 3),
+    'Mono': _p(_f.Format_Mono, 1),
+    'Mono LSb': _p(_f.Format_MonoLSB, 1),
+    'Gray 8': _p(_f.Format_Grayscale8, 8),
+    'Gray 16': _p(_f.Format_Grayscale16, 16),
+    'BGR 888': _p(_f.Format_BGR888, 24),
+    'RGB 888': _p(_f.Format_RGB888, 24),
 }
 del _f, _p
 
@@ -118,7 +122,7 @@ class FileSliceView(QMainWindow):
 
         super().__init__()
 
-        self.setWindowTitle('File Slice View')
+        self.setWindowTitle(f'File Slice View v{__version__}')
         size = self.size()
         size.setHeight(500)
         size.setWidth(round(500 * ((1 + math.sqrt(5)) / 2)))
@@ -265,12 +269,13 @@ class FileSliceView(QMainWindow):
         if y >= im.height():
             return
 
-        offset = self._bytes_per_pixel * (y * w + x)
+        offset = (self._bits_per_pixel * (y * w + x)) // 8
+        slice_length = max(1, self._bits_per_pixel // 8)
 
         oi = self._offset_info
         oi.offset.setText(f'{offset} / 0x{offset:x} / ')
 
-        v = self._mem_view[offset : offset + self._bytes_per_pixel]
+        v = self._mem_view[offset : offset + slice_length]
         oi.values.setText(
             f'{" ".join(self._hex_tt[b] for b in v)}'
             f'  |{"".join(self._prn_tt[b] for b in v)}|'
@@ -340,7 +345,7 @@ class FileSliceView(QMainWindow):
             return
 
         pixel_type = _pixels[self._pixel_cb.currentText()]
-        pixel_count = length // pixel_type.bytes_per_pixel
+        pixel_count = (length << 3) // pixel_type.bits_per_pixel
 
         if pixel_count < 1:
             self._status_bar.showMessage(
@@ -350,14 +355,26 @@ class FileSliceView(QMainWindow):
             return
 
         W = self._width_sb.value() or int(math.sqrt(pixel_count))
-        H = pixel_count // W
+        if W > pixel_count:
+            self._status_bar.showMessage(
+                'Too wide for given pixel count',
+                self._status_msg_timeout,
+            )
+            return
+
+        bit_width = W * pixel_type.bits_per_pixel
+        bytes_per_line = bit_width >> 3
+        if bit_width & 7:
+            bytes_per_line += 1
+
+        H = min(pixel_count // W, length // bytes_per_line) or 1
 
         mem_view = self._mem_view = memoryview(mm)[start : start + length]
         image = QImage(
             mem_view,
             W,
             H,
-            W * pixel_type.bytes_per_pixel,
+            bytes_per_line,
             pixel_type.format,
         )
 
@@ -378,7 +395,7 @@ class FileSliceView(QMainWindow):
         width_sb.setValue(W)
 
         self._image = image
-        self._bytes_per_pixel = pixel_type.bytes_per_pixel
+        self._bits_per_pixel = pixel_type.bits_per_pixel
 
         self._update_hexdump()
 
@@ -440,7 +457,12 @@ _a(
 _a('-s', '--start', default=0, type=non_negative_int, help='Starting offset to use')
 _a('-S', '--scale', default=1, type=positive_int, help='Scale to use')
 _a('-w', '--width', default=0, type=non_negative_int, help='Width to use')
+_a('--version', action='store_true', help='Print version')
 args = arg_parser.parse_args()
+
+if args.version:
+    print(f'{pathlib.Path(__file__).name} {__version__}')
+    sys.exit(0)
 
 app = QApplication()
 w = FileSliceView(
