@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 
+# TODO:
+#
+# - Be able to mark start of project work; perhaps Ctrl-M to bring up dialog to
+# edit time and description. Be able to break down time by project, if
+# applicable.
+
 import sqlite3
 import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.5.0'
+__version__ = '1.7.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -224,7 +230,7 @@ def gui(database):
     app = QApplication(sys.argv)
     m = QMainWindow()
     m.setCentralWidget(ClockInOut())
-    m.setWindowTitle('Clock In/Out')
+    m.setWindowTitle(f'Clock In/Out v{__version__}')
     m.adjustSize()
     s = m.size()
     _2phi = 1 + sqrt(5)
@@ -288,11 +294,13 @@ def hours(database):
             if total > 0.0:
                 grand_total += total
                 h, m, s = hms(total)
-                print(f'{date.date()}: {h:3d}:{m:02d}:{s:02d}')
+                print(f'{date.date()}: {h:3d}:{m:02d}:{s:02d}', end=' = ')
+                print(f'{h + (m * 60 + s) / 3600:6.2f}')
             date += _day_delta
         if grand_total > 0.0:
             h, m, s = hms(grand_total)
-            print(f'     Total: {h:3d}:{m:02d}:{s:02d}')
+            print(f'     Total: {h:3d}:{m:02d}:{s:02d}', end=' = ')
+            print(f'{h + (m * 60 + s) / 3600:6.2f}')
 
 def main(args_list=None):
     import argparse
