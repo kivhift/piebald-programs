@@ -5,13 +5,15 @@
 # - Be able to mark start of project work; perhaps Ctrl-M to bring up dialog to
 # edit time and description. Be able to break down time by project, if
 # applicable.
+# - Be able to bring up a table to hours, similar to what's output via the
+# command line.
 
 import sqlite3
 import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.7.0'
+__version__ = '1.8.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -38,7 +40,7 @@ def hms(s):
     return h, m, s
 
 def gui(database):
-    from math import sqrt
+    from math import ceil, floor, sqrt
     from PySide6.QtCore import Qt, QDateTime, QTimer
     from PySide6.QtWidgets import (
         QApplication, QPushButton, QLabel, QProgressBar
@@ -90,7 +92,7 @@ def gui(database):
 
             self.seconds_per_day = 8 * 3600
             self.seconds_per_pay_period = 10 * self.seconds_per_day
-            self.done_time_fmt = '%H:%M:%S'
+            self.time_fmt = '%H:%M:%S'
 
             timer = self.timer = QTimer(self)
             button = self.button = QPushButton('Clock')
@@ -100,6 +102,7 @@ def gui(database):
             pay_period_progress = self.pay_period_progress = QProgressBar()
             whats_done_label = self.whats_done_label = QLabel('Finish (?):')
             done_at_label = self.done_at_label = QLabel('??:??:??')
+            tenth_step_label = self.tenth_step_label = QLabel('0%@??:??:??')
 
             layout = QGridLayout()
             self.setLayout(layout)
@@ -116,6 +119,7 @@ def gui(database):
 
             layout.addWidget(whats_done_label, 2, 0, alignment=align_right)
             layout.addWidget(done_at_label, 2, 1, alignment=align_right)
+            layout.addWidget(tenth_step_label, 2, 2, alignment=align_right)
             layout.addWidget(button, 2, 3)
 
             day_progress.setRange(0, self.seconds_per_day)
@@ -217,13 +221,26 @@ def gui(database):
                     if pay_period_done <= day_done:
                         self.whats_done_label.setText('Finish (P):')
                         self.done_at_label.setText(
-                            pay_period_done.strftime(self.done_time_fmt)
+                            pay_period_done.strftime(self.time_fmt)
                         )
                     else:
                         self.whats_done_label.setText('Finish (D):')
                         self.done_at_label.setText(
-                            day_done.strftime(self.done_time_fmt)
+                            day_done.strftime(self.time_fmt)
                         )
+
+                    next_tenth = floor(10 * (
+                        self.last_in_pay_period_total / self.seconds_per_pay_period
+                    )) + 1
+                    next_tenth_to_go = timedelta(seconds =
+                        ceil((next_tenth / 10) * self.seconds_per_pay_period)
+                            - self.last_in_pay_period_total
+                    )
+                    this_tenth_done = now + next_tenth_to_go
+                    self.tenth_step_label.setText(
+                        f'{10 * next_tenth}% @ {this_tenth_done.strftime(self.time_fmt)}'
+                    )
+
                 self.set_progress()
                 self.update_totals()
 
