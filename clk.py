@@ -5,21 +5,20 @@
 # - Be able to mark start of project work; perhaps Ctrl-M to bring up dialog to
 # edit time and description. Be able to break down time by project, if
 # applicable.
-# - Be able to bring up a table to hours, similar to what's output via the
-# command line.
 
 import sqlite3
 import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.8.0'
+__version__ = '1.9.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
 _insert = 'insert into clocks values(?,?);'
 
 _day_delta = timedelta(days=1)
+_seconds_per_hour = 3600
 
 class SQLite3Connection(sqlite3.Connection):
     def __init__(self, *args, **kwargs):
@@ -34,7 +33,7 @@ class SQLite3Connection(sqlite3.Connection):
         if hasattr(s, '__del__'): s.__del__()
 
 def hms(s):
-    h, s = divmod(round(s), 3600)
+    h, s = divmod(round(s), _seconds_per_hour)
     m, s = divmod(s, 60)
 
     return h, m, s
@@ -45,7 +44,8 @@ def gui(database):
     from PySide6.QtWidgets import (
         QApplication, QPushButton, QLabel, QProgressBar
         , QGridLayout, QHBoxLayout, QVBoxLayout, QWidget, QMainWindow
-        , QDialog, QDialogButtonBox, QDateTimeEdit, QCheckBox
+        , QDialog, QDialogButtonBox, QDateTimeEdit, QCheckBox, QTableWidget
+        , QTableWidgetItem, QAbstractScrollArea
     )
 
     class DateTimeInOutDialog(QDialog):
@@ -81,6 +81,61 @@ def gui(database):
         def in_(self):
             return self.checkbox.isChecked()
 
+    class HoursReportDialog(QDialog):
+        def __init__(self, parent=None, database=None):
+            super().__init__(parent)
+
+            def twi(text):
+                I = QTableWidgetItem(text)
+                I.setFlags(I.flags() ^ Qt.ItemFlags.ItemIsEditable)
+                I.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+                return I
+
+            vbox = QVBoxLayout(self)
+            vbox.setSizeConstraint(vbox.SizeConstraint.SetFixedSize)
+            vbox.setContentsMargins(0, 0, 0, 0)
+
+            headers = 'Date Hours'.split()
+            table = QTableWidget()
+            vbox.addWidget(table)
+
+            table.setAlternatingRowColors(True)
+            table.verticalHeader().hide()
+            table.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
+            table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            table.setColumnCount(len(headers))
+            table.setHorizontalHeaderLabels(headers)
+
+            def hours_str(s):
+                return f'{s / _seconds_per_hour : .2f}'
+
+            def get_and_add_row():
+                row = table.rowCount()
+                table.setRowCount(row + 1)
+
+                return row
+
+            date = relative_pay_period_start(datetime.now())
+            grand_total = 0.0
+            with SQLite3Connection(database) as conn:
+                cur = conn.cursor()
+                cur.execute(_schema)
+                for total in day_totals(cur, date):
+                    if total > 0.0:
+                        grand_total += total
+                        row = get_and_add_row()
+                        table.setItem(row, 0, twi(str(date.date())))
+                        table.setItem(row, 1, twi(hours_str(total)))
+                    date += _day_delta
+            row = get_and_add_row()
+            table.setItem(row, 0, twi('Total'))
+            table.setItem(row, 1, twi(hours_str(grand_total)))
+
+            table.resizeColumnsToContents()
+            table.resizeRowsToContents()
+
     class ClockInOut(QWidget):
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -90,7 +145,7 @@ def gui(database):
             self.in_ = None
             self.text = ['Clock ' + x for x in 'In Out'.split()]
 
-            self.seconds_per_day = 8 * 3600
+            self.seconds_per_day = 8 * _seconds_per_hour
             self.seconds_per_pay_period = 10 * self.seconds_per_day
             self.time_fmt = '%H:%M:%S'
 
@@ -137,22 +192,28 @@ def gui(database):
             self.setFocusPolicy(Qt.StrongFocus)
 
         def keyReleaseEvent(self, event):
+            text = event.text()
+
             # Use CTRL-T to edit the date/time, otherwise bubble up.
-            if '\x14' != event.text():
+            if '\x14' == text:
+                dt = DateTimeInOutDialog(self)
+                dt.setWindowTitle('Date/Time')
+                if QDialog.Rejected == dt.exec():
+                    return
+
+                with SQLite3Connection(self.database) as conn:
+                    cur = conn.cursor()
+                    cur.execute(_schema)
+                    cur.execute(_insert, (dt.timestamp(), dt.in_()))
+
+                self.in_ = None
+                self.in_out()
+            elif '\x12' == text:
+                report = HoursReportDialog(self, database=self.database)
+                report.setWindowTitle('Report')
+                report.exec()
+            else:
                 return super().keyReleaseEvent(event)
-
-            dt = DateTimeInOutDialog(self)
-            dt.setWindowTitle('Date/Time')
-            if QDialog.Rejected == dt.exec():
-                return
-
-            with SQLite3Connection(self.database) as conn:
-                cur = conn.cursor()
-                cur.execute(_schema)
-                cur.execute(_insert, (dt.timestamp(), dt.in_()))
-
-            self.in_ = None
-            self.in_out()
 
         def update_totals(self):
             h, m, s = hms(self.day_total)
@@ -312,12 +373,12 @@ def hours(database):
                 grand_total += total
                 h, m, s = hms(total)
                 print(f'{date.date()}: {h:3d}:{m:02d}:{s:02d}', end=' = ')
-                print(f'{h + (m * 60 + s) / 3600:6.2f}')
+                print(f'{h + (m * 60 + s) / _seconds_per_hour:6.2f}')
             date += _day_delta
         if grand_total > 0.0:
             h, m, s = hms(grand_total)
             print(f'     Total: {h:3d}:{m:02d}:{s:02d}', end=' = ')
-            print(f'{h + (m * 60 + s) / 3600:6.2f}')
+            print(f'{h + (m * 60 + s) / _seconds_per_hour:6.2f}')
 
 def main(args_list=None):
     import argparse
