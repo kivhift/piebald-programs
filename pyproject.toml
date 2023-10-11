@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "piebald-programs"
+version = "0.1.0"
+description = "Just need a venv to run stuff"
+authors = ["Joshua Hughes <kivhift@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "piebald_programs"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+pyside6 = "^6.5.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
