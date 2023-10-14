@@ -14,31 +14,36 @@ import mmap
 import pathlib
 import sys
 
-from PySide6.QtCore import Qt, Signal, Slot, QPointF
-from PySide6.QtWidgets import (
-    QApplication,
-    QComboBox,
-    QDockWidget,
-    QFileDialog,
-    QGraphicsScene,
-    QGraphicsView,
-    QHBoxLayout,
-    QLabel,
-    QMainWindow,
-    QPlainTextEdit,
-    QSpinBox,
-    QWidget,
-)
-from PySide6.QtGui import (
-    QAction,
-    QBrush,
-    QFont,
-    QImage,
-    QPixmap,
-    QTransform,
-)
+try:
+    from PySide6.QtCore import Qt, Signal, Slot, QPointF
+    from PySide6.QtWidgets import (
+        QApplication,
+        QComboBox,
+        QDockWidget,
+        QFileDialog,
+        QGraphicsScene,
+        QGraphicsView,
+        QHBoxLayout,
+        QLabel,
+        QMainWindow,
+        QPlainTextEdit,
+        QSpinBox,
+        QWidget,
+    )
+    from PySide6.QtGui import (
+        QAction,
+        QBrush,
+        QFont,
+        QImage,
+        QPixmap,
+        QTransform,
+    )
+except ImportError:
+    sys.exit(
+        "Couldn't import PySide6. Perhaps you need to 'pip install PySide6'?"
+    )
 
-__version__ = '1.5.0'
+__version__ = '1.6.0'
 
 # This function (and its partner-in-crime below) are adapted from the
 # Summerfield book; Rapid GUI Programming with Python and Qt.
