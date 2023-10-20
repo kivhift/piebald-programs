@@ -11,7 +11,7 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.10.0'
+__version__ = '1.10.1'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -252,6 +252,7 @@ def gui(database):
         def input_datetime(self):
             dt = DateTimeInOutDialog(self)
             dt.setWindowTitle('Date/Time')
+            dt.checkbox.setChecked(not self.in_)
             if QDialog.Rejected == dt.exec():
                 return
 
