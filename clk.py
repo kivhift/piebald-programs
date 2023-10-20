@@ -194,7 +194,6 @@ def gui(database):
         def keyReleaseEvent(self, event):
             text = event.text()
 
-            # Use CTRL-T to edit the date/time, otherwise bubble up.
             if '\x14' == text:
                 dt = DateTimeInOutDialog(self)
                 dt.setWindowTitle('Date/Time')
@@ -212,6 +211,8 @@ def gui(database):
                 report = HoursReportDialog(self, database=self.database)
                 report.setWindowTitle('Report')
                 report.exec()
+            elif '\x11' == text:
+                self.parent().close()
             else:
                 return super().keyReleaseEvent(event)
 
