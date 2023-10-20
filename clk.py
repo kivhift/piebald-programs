@@ -11,7 +11,7 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.9.0'
+__version__ = '1.10.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -40,13 +40,41 @@ def hms(s):
 
 def gui(database):
     from math import ceil, floor, sqrt
-    from PySide6.QtCore import Qt, QDateTime, QTimer
+    from PySide6.QtCore import Qt, QDateTime, QTimer, Slot
+    from PySide6.QtGui import QAction
     from PySide6.QtWidgets import (
         QApplication, QPushButton, QLabel, QProgressBar
         , QGridLayout, QHBoxLayout, QVBoxLayout, QWidget, QMainWindow
         , QDialog, QDialogButtonBox, QDateTimeEdit, QCheckBox, QTableWidget
-        , QTableWidgetItem, QAbstractScrollArea
+        , QTableWidgetItem, QAbstractScrollArea, QMenu
     )
+
+    # This function (and its partner-in-crime below) are adapted from the
+    # Summerfield book; Rapid GUI Programming with Python and Qt.
+    def create_action(
+        parent, text, shortcut=None, tip=None, checkable=False, action=None
+    ):
+        action = action or QAction(text, parent)
+
+        if shortcut is not None:
+            action.setShortcut(shortcut)
+
+        if tip is not None:
+            # Bah, tooltips...
+            action.setToolTip(tip)
+            action.setStatusTip(tip)
+
+        if checkable:
+            action.setCheckable(True)
+
+        return action
+
+    def add_actions(target, actions):
+        for action in actions:
+            if action is None:
+                target.addSeparator()
+            else:
+                target.addAction(action)
 
     class DateTimeInOutDialog(QDialog):
         def __init__(self, parent=None):
@@ -191,30 +219,49 @@ def gui(database):
 
             self.setFocusPolicy(Qt.StrongFocus)
 
+            act = self.report_act = create_action(self, 'Report')
+            act.triggered.connect(self.show_report)
+
+            act = self.input_datetime_act = create_action(self, 'Input Date/Time')
+            act.triggered.connect(self.input_datetime)
+
+        def contextMenuEvent(self, event):
+            menu = QMenu(self)
+            add_actions(menu, (self.input_datetime_act, self.report_act))
+            menu.exec(event.globalPos())
+
         def keyReleaseEvent(self, event):
             text = event.text()
 
             if '\x14' == text:
-                dt = DateTimeInOutDialog(self)
-                dt.setWindowTitle('Date/Time')
-                if QDialog.Rejected == dt.exec():
-                    return
-
-                with SQLite3Connection(self.database) as conn:
-                    cur = conn.cursor()
-                    cur.execute(_schema)
-                    cur.execute(_insert, (dt.timestamp(), dt.in_()))
-
-                self.in_ = None
-                self.in_out()
+                self.input_datetime()
             elif '\x12' == text:
-                report = HoursReportDialog(self, database=self.database)
-                report.setWindowTitle('Report')
-                report.exec()
+                self.show_report()
             elif '\x11' == text:
                 self.parent().close()
             else:
                 return super().keyReleaseEvent(event)
+
+        @Slot()
+        def show_report(self):
+            report = HoursReportDialog(self, database=self.database)
+            report.setWindowTitle('Report')
+            report.exec()
+
+        @Slot()
+        def input_datetime(self):
+            dt = DateTimeInOutDialog(self)
+            dt.setWindowTitle('Date/Time')
+            if QDialog.Rejected == dt.exec():
+                return
+
+            with SQLite3Connection(self.database) as conn:
+                cur = conn.cursor()
+                cur.execute(_schema)
+                cur.execute(_insert, (dt.timestamp(), dt.in_()))
+
+            self.in_ = None
+            self.in_out()
 
         def update_totals(self):
             h, m, s = hms(self.day_total)
