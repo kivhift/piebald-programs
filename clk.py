@@ -15,7 +15,7 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.10.1'
+__version__ = '1.10.2'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -223,28 +223,27 @@ def gui(database):
 
             self.setFocusPolicy(Qt.StrongFocus)
 
-            act = self.report_act = create_action(self, 'Report')
+            act = self.report_act = create_action(
+                self, 'Report Hours', 'Ctrl+R'
+            )
             act.triggered.connect(self.show_report)
 
-            act = self.input_datetime_act = create_action(self, 'Input Date/Time')
+            act = self.enter_datetime_act = create_action(
+                self, 'Enter Date/Time', 'Ctrl+E'
+            )
             act.triggered.connect(self.input_datetime)
+
+            act = self.quit_act = create_action(self, 'Quit', 'Ctrl+Q')
+            act.triggered.connect(QApplication.quit)
+
+            add_actions(
+                self, (self.report_act, self.enter_datetime_act, self.quit_act)
+            )
 
         def contextMenuEvent(self, event):
             menu = QMenu(self)
-            add_actions(menu, (self.input_datetime_act, self.report_act))
+            add_actions(menu, (self.enter_datetime_act, self.report_act))
             menu.exec(event.globalPos())
-
-        def keyReleaseEvent(self, event):
-            text = event.text()
-
-            if '\x14' == text:
-                self.input_datetime()
-            elif '\x12' == text:
-                self.show_report()
-            elif '\x11' == text:
-                self.parent().close()
-            else:
-                return super().keyReleaseEvent(event)
 
         @Slot()
         def show_report(self):
