@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+#
+# SPDX-License-Identifier: MIT
+#
+# Copyright 2023 Joshua Hughes <kivhift@gmail.com>
 
 # TODO:
 # - Use QPlainTextEdit.verticalScrollBar.valueChanged along with an iterator
