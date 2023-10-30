@@ -15,7 +15,7 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.10.2'
+__version__ = '1.11.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -175,14 +175,12 @@ def gui(database):
             self.day_total = 0
             self.pay_period_total = 0
             self.in_ = None
-            self.text = ['Clock ' + x for x in 'In Out'.split()]
 
             self.seconds_per_day = 8 * _seconds_per_hour
             self.seconds_per_pay_period = 10 * self.seconds_per_day
             self.time_fmt = '%H:%M:%S'
 
             timer = self.timer = QTimer(self)
-            button = self.button = QPushButton('Clock')
             day_total_label = self.day_total_label = QLabel()
             pay_period_total_label = self.pay_period_total_label = QLabel()
             day_progress = self.day_progress = QProgressBar()
@@ -207,7 +205,6 @@ def gui(database):
             layout.addWidget(whats_done_label, 2, 0, alignment=align_right)
             layout.addWidget(done_at_label, 2, 1, alignment=align_right)
             layout.addWidget(tenth_step_label, 2, 2, alignment=align_right)
-            layout.addWidget(button, 2, 3)
 
             day_progress.setRange(0, self.seconds_per_day)
             day_progress.setValue(self.day_total)
@@ -219,7 +216,6 @@ def gui(database):
             timer.timeout.connect(self.update_progress)
 
             self.in_out()
-            button.clicked.connect(self.in_out)
 
             self.setFocusPolicy(Qt.StrongFocus)
 
@@ -299,15 +295,12 @@ def gui(database):
                         order by timestamp desc limit 1;''').fetchone()
                     if row is None:
                         self.in_ = 0
-                        self.button.setText(self.text[self.in_])
                         return
                     ts, in_ = row
                     self.in_ = in_
-                    self.button.setText(self.text[in_])
                 else:
                     cur.execute(_insert, (now_ts, self.in_ ^ 1))
                     self.in_ ^= 1
-                    self.button.setText(self.text[self.in_])
                 if self.in_:
                     self.last_in_ts = now_ts
                     self.timer.start()
