@@ -15,7 +15,7 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.11.0'
+__version__ = '1.11.1'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -275,12 +275,26 @@ def gui(database):
             p = self.pay_period_progress
             p.setValue(min(p.maximum(), self.pay_period_total))
 
+
         def update_progress(self):
-            delta = datetime.now().timestamp() - self.last_in_ts
+            now = datetime.now()
+            delta = now.timestamp() - self.last_in_ts
             self.day_total = round(self.last_in_day_total + delta)
             self.pay_period_total = round(self.last_in_pay_period_total + delta)
             self.set_progress()
             self.update_totals()
+
+            if now >= self.this_tenth_done:
+                next_tenth = floor(10 * (
+                    self.pay_period_total / self.seconds_per_pay_period
+                )) + 1
+                pp_tenth = timedelta(
+                    seconds=round(self.seconds_per_pay_period / 10)
+                )
+                self.this_tenth_done = this_tenth_done = now + pp_tenth
+                self.tenth_step_label.setText(
+                    f'{10 * next_tenth}% @ {this_tenth_done.strftime(self.time_fmt)}'
+                )
 
         def in_out(self):
             now = datetime.now()
@@ -342,7 +356,7 @@ def gui(database):
                         ceil((next_tenth / 10) * self.seconds_per_pay_period)
                             - self.last_in_pay_period_total
                     )
-                    this_tenth_done = now + next_tenth_to_go
+                    self.this_tenth_done = this_tenth_done = now + next_tenth_to_go
                     self.tenth_step_label.setText(
                         f'{10 * next_tenth}% @ {this_tenth_done.strftime(self.time_fmt)}'
                     )
