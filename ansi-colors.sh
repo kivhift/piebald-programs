@@ -35,7 +35,7 @@ readonly T
 
 echo -en "\n            "
 declare -ra BGs=(40m 41m 42m 43m 44m 45m 46m 47m)
-for bg in ${BGs[*]}; do
+for bg in "${BGs[@]}"; do
     echo -n "  $bg "
 done
 echo
@@ -46,7 +46,7 @@ for fg in '    m' '   1m' '  30m' '1;30m' '  31m' '1;31m' '  32m' \
     echo -n " $fg "
     fg=${fg// /}
     echo -en "\e[$fg $T \e[0m"
-    for bg in ${BGs[*]}; do
+    for bg in "${BGs[@]}"; do
         echo -en " \e[$fg\e[$bg $T \e[0m"
     done
     echo
