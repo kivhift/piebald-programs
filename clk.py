@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 #
-# Copyright 2020-2023 Joshua Hughes <kivhift@gmail.com>
+# Copyright 2020-2025 Joshua Hughes <kivhift@gmail.com>
 
 # TODO:
 #
@@ -15,7 +15,7 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.11.1'
+__version__ = '1.12.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -23,6 +23,7 @@ _insert = 'insert into clocks values(?,?);'
 
 _day_delta = timedelta(days=1)
 _seconds_per_hour = 3600
+_seconds_per_period = 80 * _seconds_per_hour
 
 class SQLite3Connection(sqlite3.Connection):
     def __init__(self, *args, **kwargs):
@@ -42,6 +43,12 @@ def hms(s):
 
     return h, m, s
 
+def s2h(s):
+    return round(s) / _seconds_per_hour
+
+def s2p(s):
+    return (100.0 * s) / _seconds_per_period
+
 def gui(database):
     from math import ceil, floor, sqrt
     from PySide6.QtCore import Qt, QDateTime, QTimer, Slot
@@ -50,7 +57,7 @@ def gui(database):
         QApplication, QPushButton, QLabel, QProgressBar
         , QGridLayout, QHBoxLayout, QVBoxLayout, QWidget, QMainWindow
         , QDialog, QDialogButtonBox, QDateTimeEdit, QCheckBox, QTableWidget
-        , QTableWidgetItem, QAbstractScrollArea, QMenu
+        , QTableWidgetItem, QAbstractScrollArea, QMenu, QFrame
     )
 
     # This function (and its partner-in-crime below) are adapted from the
@@ -128,8 +135,8 @@ def gui(database):
             vbox.setSizeConstraint(vbox.SizeConstraint.SetFixedSize)
             vbox.setContentsMargins(0, 0, 0, 0)
 
-            headers = 'Date Hours'.split()
-            table = QTableWidget()
+            headers = 'Date Hours Total %'.split()
+            table = QTableWidget(0, len(headers))
             vbox.addWidget(table)
 
             table.setAlternatingRowColors(True)
@@ -137,11 +144,10 @@ def gui(database):
             table.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
             table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            table.setColumnCount(len(headers))
             table.setHorizontalHeaderLabels(headers)
 
             def hours_str(s):
-                return f'{s / _seconds_per_hour : .2f}'
+                return f'{s2h(s):.2f}'
 
             def get_and_add_row():
                 row = table.rowCount()
@@ -160,10 +166,9 @@ def gui(database):
                         row = get_and_add_row()
                         table.setItem(row, 0, twi(str(date.date())))
                         table.setItem(row, 1, twi(hours_str(total)))
+                        table.setItem(row, 2, twi(hours_str(grand_total)))
+                        table.setItem(row, 3, twi(f'{s2p(grand_total):.1f}'))
                     date += _day_delta
-            row = get_and_add_row()
-            table.setItem(row, 0, twi('Total'))
-            table.setItem(row, 1, twi(hours_str(grand_total)))
 
             table.resizeColumnsToContents()
             table.resizeRowsToContents()
@@ -177,7 +182,7 @@ def gui(database):
             self.in_ = None
 
             self.seconds_per_day = 8 * _seconds_per_hour
-            self.seconds_per_pay_period = 10 * self.seconds_per_day
+            self.seconds_per_pay_period = _seconds_per_period
             self.time_fmt = '%H:%M:%S'
 
             timer = self.timer = QTimer(self)
@@ -187,7 +192,9 @@ def gui(database):
             pay_period_progress = self.pay_period_progress = QProgressBar()
             whats_done_label = self.whats_done_label = QLabel('Finish (?):')
             done_at_label = self.done_at_label = QLabel('??:??:??')
-            tenth_step_label = self.tenth_step_label = QLabel('0%@??:??:??')
+            tenth_step_label = self.tenth_step_label = QLabel('0% @ ??:??:??')
+            tenth_step_label.setFrameStyle(QFrame.Box | QFrame.Sunken)
+            datetime_label = self.datetime_label = QLabel('??-?? ??:??:??')
 
             layout = QGridLayout()
             self.setLayout(layout)
@@ -204,7 +211,13 @@ def gui(database):
 
             layout.addWidget(whats_done_label, 2, 0, alignment=align_right)
             layout.addWidget(done_at_label, 2, 1, alignment=align_right)
-            layout.addWidget(tenth_step_label, 2, 2, alignment=align_right)
+            layout.addWidget(
+                tenth_step_label,
+                2,
+                2,
+                alignment=Qt.Alignment() | Qt.AlignCenter,
+            )
+            layout.addWidget(datetime_label, 2, 3, alignment=align_right)
 
             day_progress.setRange(0, self.seconds_per_day)
             day_progress.setValue(self.day_total)
@@ -295,6 +308,12 @@ def gui(database):
                 self.tenth_step_label.setText(
                     f'{10 * next_tenth}% @ {this_tenth_done.strftime(self.time_fmt)}'
                 )
+
+            self.datetime_label.setText(
+                '{:02d}-{:02d} {:02d}:{:02d}:{:02d}'.format(
+                    now.month, now.day, now.hour, now.minute, now.second,
+                )
+            )
 
         def in_out(self):
             now = datetime.now()
@@ -430,14 +449,18 @@ def hours(database):
         for total in day_totals(cur, date):
             if total > 0.0:
                 grand_total += total
-                h, m, s = hms(total)
-                print(f'{date.date()}: {h:3d}:{m:02d}:{s:02d}', end=' = ')
-                print(f'{h + (m * 60 + s) / _seconds_per_hour:6.2f}')
+                print(
+                    '{}: {:3d}:{:02d}:{:02d} = {:6.2f} Σ {:6.2f} ({:4.1f}%)'.format(
+                        date.date(),
+                        *hms(total),
+                        s2h(total),
+                        s2h(grand_total),
+                        s2p(grand_total),
+                    )
+                )
             date += _day_delta
         if grand_total > 0.0:
-            h, m, s = hms(grand_total)
-            print(f'     Total: {h:3d}:{m:02d}:{s:02d}', end=' = ')
-            print(f'{h + (m * 60 + s) / _seconds_per_hour:6.2f}')
+            print('     Total: {:3d}:{:02d}:{:02d}'.format(*hms(grand_total)))
 
 def main(args_list=None):
     import argparse
