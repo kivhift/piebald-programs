@@ -11,7 +11,12 @@ packages = [{include = "piebald_programs"}]
 python = ">=3.10,<3.12"
 pyside6 = "^6.5.2"
 
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 84
+
+[tool.ruff.format]
+quote-style = "preserve"

@@ -9,11 +9,13 @@ import sys
 
 __version__ = '1.2.0'
 
+
 def _bytes(x):
     try:
         return memoryview(x)
     except TypeError:
         return bytearray(x)
+
 
 def gen_table(poly, width):
     MSb_mask = 1 << (width - 1)
@@ -35,6 +37,7 @@ def gen_table(poly, width):
 
     return table
 
+
 def reflect(x, width):
     rx = i = 0
     while x and i < width:
@@ -47,13 +50,16 @@ def reflect(x, width):
 
     return rx
 
+
 def reflect_u8(x):
     x =    ((x & 0xaa) >> 1) | ((x & 0x55) << 1)
     x =    ((x & 0xcc) >> 2) | ((x & 0x33) << 2)
     return ((x & 0xf0) >> 4) | ((x & 0x0f) << 4)
 
-def LUT_CRC(poly, width, data
-        , xor_in = 0, xor_out = 0, reflect_in = False, reflect_out = False):
+
+def LUT_CRC(
+    poly, width, data, xor_in=0, xor_out=0, reflect_in=False, reflect_out=False
+):
     '''Calculate the CRC using a LUT for widths >|8'''
     if width < 8 or 0 != (width & 7):
         raise ValueError(f'Width should be >8 and divisible by 8: {width}')
@@ -71,8 +77,10 @@ def LUT_CRC(poly, width, data
 
     return out_xform(crc, width) ^ xor_out
 
-def CRC(poly, width, data
-        , xor_in = 0, xor_out = 0, reflect_in = False, reflect_out = False):
+
+def CRC(
+    poly, width, data, xor_in=0, xor_out=0, reflect_in=False, reflect_out=False
+):
     '''Calculate the CRC for widths >0'''
     data = _bytes(data)
     pop_mask = 1 << width
@@ -106,6 +114,7 @@ def CRC(poly, width, data
 
     return out_xform(crc, width) ^ xor_out
 
+
 def print_LUT(poly, width):
     if width > 64:
         raise ValueError(f'Width is more than biggest stdint size: {width} > 64')
@@ -129,23 +138,25 @@ def print_LUT(poly, width):
     T = gen_table(poly, width)
 
     print(f'static const {stdint} CRC{width}_{fmt.format(poly)}_LUT[{len(T)}] = {{')
-    print(f'{indent}{fmt.format(T.pop(0))}', end = '')
+    print(f'{indent}{fmt.format(T.pop(0))}', end='')
     for i, x in enumerate(T, 1):
         if 0 == (i & 7):
-            print(f'\n{indent}', end = '')
-        print(f', {fmt.format(x)}', end = '')
+            print(f'\n{indent}', end='')
+        print(f', {fmt.format(x)}', end='')
     print('\n};')
+
 
 def main():
     import argparse
 
-    class HelpFormatter(argparse.RawTextHelpFormatter
-            , argparse.ArgumentDefaultsHelpFormatter):
+    class HelpFormatter(
+        argparse.RawTextHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
         pass
 
     parser = argparse.ArgumentParser(
-        description = 'Compute a CRC over supplied data'
-        , epilog = '''
+        description='Compute a CRC over supplied data',
+        epilog='''
 The calculations are based on the common case of taking the input a byte at a
 time.  If, for example, a CRC4 is needed for an odd number of nybbles, then
 you'll have to finagle things a bit to get the answer.  If (for some strange
@@ -156,35 +167,27 @@ Supplying only the polynomial without specifying the width implies that the
 polynomial is given in implicit +1 notation (Koopman's notation) and thus the
 width will be derived from the polynomial.  If the width is supplied along with
 the polynomial, then it's assumed to be the "normal" notation with an implied
-x^W.'''
-        , formatter_class = HelpFormatter)
+x^W.''',
+        formatter_class=HelpFormatter,
+    )
     _a = parser.add_argument
-    _a('-p', '--poly'
-        , help = 'Polynomial to use')
-    _a('-w', '--width'
-        , help = 'Width of the CRC in bits')
-    _a('-x', '--xor-in'
-        , help = 'The input XOR value')
-    _a('-X', '--xor-out'
-        , help = 'The output XOR value')
-    _a('-r', '--reflect-input', action = 'store_true'
-        , help = 'Reflect the input')
-    _a('-R', '--reflect-output', action = 'store_true'
-        , help = 'Reflect the output')
-    _a('-i', '--input'
-        , help = 'File to use as input')
-    _a('-s', '--skip'
-        , help = 'Skip this many bytes of input file; can be negative')
-    _a('-c', '--count'
-        , help = 'Use this many bytes of input file; can be negative')
-    _a('--hex'
-        , help = 'Hexadecimal string of data')
-    _a('--str'
-        , help = 'String of data (encoded using locale\'s encoding)')
-    _a('--lut', action = 'store_true'
-        , help = 'Print LUT to stdout as C-style array using stdints, then exit')
-    _a('--version', action = 'store_true'
-        , help = 'Print version and exit')
+    _a('-p', '--poly', help='Polynomial to use')
+    _a('-w', '--width', help='Width of the CRC in bits')
+    _a('-x', '--xor-in', help='The input XOR value')
+    _a('-X', '--xor-out', help='The output XOR value')
+    _a('-r', '--reflect-input', action='store_true', help='Reflect the input')
+    _a('-R', '--reflect-output', action='store_true', help='Reflect the output')
+    _a('-i', '--input', help='File to use as input')
+    _a('-s', '--skip', help='Skip this many bytes of input file; can be negative')
+    _a('-c', '--count', help='Use this many bytes of input file; can be negative')
+    _a('--hex', help='Hexadecimal string of data')
+    _a('--str', help='String of data (encoded using locale\'s encoding)')
+    _a(
+        '--lut',
+        action='store_true',
+        help='Print LUT to stdout as C-style array using stdints, then exit',
+    )
+    _a('--version', action='store_true', help='Print version and exit')
     args = parser.parse_args()
 
     if args.version:
@@ -194,7 +197,8 @@ x^W.'''
     if args.poly is None:
         raise SystemExit(' ** Need to specify polynomial')
 
-    any_int = lambda x: 0 if x is None else int(x, 0)
+    def any_int(x):
+        return 0 if x is None else int(x, 0)
 
     P = any_int(args.poly)
     if args.width is None:
@@ -220,8 +224,10 @@ x^W.'''
 
         skip = any_int(args.skip)
         count = any_int(args.count)
-        with open(args.input, 'rb') as inf, mmap(
-                inf.fileno(), 0, access = ACCESS_READ) as mm:
+        with (
+            open(args.input, 'rb') as inf,
+            mmap(inf.fileno(), 0, access=ACCESS_READ) as mm,
+        ):
             if skip < 0:
                 skip = max(0, len(mm) + skip)
             if count <= 0:
@@ -231,20 +237,24 @@ x^W.'''
             crc = fn(P, W, mm[skip : skip + count], xi, xo, ri, ro)
     elif args.hex is not None:
         from binascii import unhexlify
+
         crc = fn(P, W, unhexlify(args.hex), xi, xo, ri, ro)
     elif args.str is not None:
         from locale import getpreferredencoding
+
         crc = fn(P, W, args.str.encode(getpreferredencoding()), xi, xo, ri, ro)
     else:
         from functools import partial
         from io import DEFAULT_BUFFER_SIZE
+
         inf = sys.stdin.buffer
         crc = xi
         for chunk in iter(partial(inf.read, DEFAULT_BUFFER_SIZE), b''):
-            crc = fn(P, W, chunk, crc, reflect_in = ri)
+            crc = fn(P, W, chunk, crc, reflect_in=ri)
         crc = (reflect(crc, W) if ro else crc) ^ xo
 
     print(f'{crc:x}')
+
 
 if '__main__' == __name__:
     main()

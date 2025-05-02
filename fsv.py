@@ -43,11 +43,10 @@ try:
         QTransform,
     )
 except ImportError:
-    sys.exit(
-        "Couldn't import PySide6. Perhaps you need to 'pip install PySide6'?"
-    )
+    sys.exit("Couldn't import PySide6. Perhaps you need to 'pip install PySide6'?")
 
 __version__ = '1.6.0'
+
 
 # This function (and its partner-in-crime below) are adapted from the
 # Summerfield book; Rapid GUI Programming with Python and Qt.
@@ -69,12 +68,14 @@ def create_action(
 
     return action
 
+
 def add_actions(target, actions):
     for action in actions:
         if action is None:
             target.addSeparator()
         else:
             target.addAction(action)
+
 
 PixelType = collections.namedtuple('PixelType', 'format bits_per_pixel')
 _f, _p = QImage.Format, PixelType
@@ -88,6 +89,7 @@ _pixels = {
 }
 del _f, _p
 
+
 class GraphicsScene(QGraphicsScene):
     mousePressPosition = Signal(QPointF)
 
@@ -96,6 +98,7 @@ class GraphicsScene(QGraphicsScene):
 
     def mousePressEvent(self, event):
         self.mousePressPosition.emit(event.scenePos())
+
 
 class OffsetInfo(QWidget):
     def __init__(self, parent=None):
@@ -114,6 +117,7 @@ class OffsetInfo(QWidget):
         layout.addStretch()
 
         self.setLayout(layout)
+
 
 class FileSliceView(QMainWindow):
     def __init__(
@@ -305,7 +309,9 @@ class FileSliceView(QMainWindow):
         start_address = self._start_sb.value()
 
         sz = len(buffer)
-        fmt = f'{{:0{len(hex(start_address + sz)) - 2}x}}  {{:23s}}  {{:23s}}  |{{}}|'
+        fmt = (
+            f'{{:0{len(hex(start_address + sz)) - 2}x}}  {{:23s}}  {{:23s}}  |{{}}|'
+        )
         chunk_sz = 16
         chunk_half_sz = chunk_sz >> 1
         last_chunk = memoryview(b'')
@@ -320,12 +326,14 @@ class FileSliceView(QMainWindow):
             if skipped:
                 _l('*')
                 skipped = False
-            _l(fmt.format(
-                offset + start_address,
-                ' '.join(hex_tt[b] for b in chunk[:chunk_half_sz]),
-                ' '.join(hex_tt[b] for b in chunk[chunk_half_sz:]),
-                ''.join(prn_tt[b] for b in chunk),
-            ))
+            _l(
+                fmt.format(
+                    offset + start_address,
+                    ' '.join(hex_tt[b] for b in chunk[:chunk_half_sz]),
+                    ' '.join(hex_tt[b] for b in chunk[chunk_half_sz:]),
+                    ''.join(prn_tt[b] for b in chunk),
+                )
+            )
             last_chunk = chunk
         if skipped:
             _l('*')
@@ -435,6 +443,7 @@ class FileSliceView(QMainWindow):
 
         self._update_image()
 
+
 def non_negative_int(x):
     v = int(x, 0)
     if v < 0:
@@ -442,12 +451,14 @@ def non_negative_int(x):
 
     return v
 
+
 def positive_int(x):
     v = int(x, 0)
     if v < 1:
         raise ValueError(f'Value should be positive: {v}')
 
     return v
+
 
 arg_parser = argparse.ArgumentParser(
     description='View a file slice',
@@ -461,7 +472,7 @@ _a(
     '--pixel-format',
     default='RGB 888',
     choices=list(sorted(_pixels)),
-    help='Pixel format to use'
+    help='Pixel format to use',
 )
 _a('-s', '--start', default=0, type=non_negative_int, help='Starting offset to use')
 _a('-S', '--scale', default=1, type=positive_int, help='Scale to use')

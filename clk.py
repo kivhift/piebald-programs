@@ -25,6 +25,7 @@ _day_delta = timedelta(days=1)
 _seconds_per_hour = 3600
 _seconds_per_period = 80 * _seconds_per_hour
 
+
 class SQLite3Connection(sqlite3.Connection):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -35,7 +36,9 @@ class SQLite3Connection(sqlite3.Connection):
     def __del__(self):
         self.close()
         s = super()
-        if hasattr(s, '__del__'): s.__del__()
+        if hasattr(s, '__del__'):
+            s.__del__()
+
 
 def hms(s):
     h, s = divmod(round(s), _seconds_per_hour)
@@ -43,21 +46,37 @@ def hms(s):
 
     return h, m, s
 
+
 def s2h(s):
     return round(s) / _seconds_per_hour
 
+
 def s2p(s):
     return (100.0 * s) / _seconds_per_period
+
 
 def gui(database):
     from math import ceil, floor, sqrt
     from PySide6.QtCore import Qt, QDateTime, QTimer, Slot
     from PySide6.QtGui import QAction
     from PySide6.QtWidgets import (
-        QApplication, QPushButton, QLabel, QProgressBar
-        , QGridLayout, QHBoxLayout, QVBoxLayout, QWidget, QMainWindow
-        , QDialog, QDialogButtonBox, QDateTimeEdit, QCheckBox, QTableWidget
-        , QTableWidgetItem, QAbstractScrollArea, QMenu, QFrame
+        QApplication,
+        QLabel,
+        QProgressBar,
+        QGridLayout,
+        QHBoxLayout,
+        QVBoxLayout,
+        QWidget,
+        QMainWindow,
+        QDialog,
+        QDialogButtonBox,
+        QDateTimeEdit,
+        QCheckBox,
+        QTableWidget,
+        QTableWidgetItem,
+        QAbstractScrollArea,
+        QMenu,
+        QFrame,
     )
 
     # This function (and its partner-in-crime below) are adapted from the
@@ -232,9 +251,7 @@ def gui(database):
 
             self.setFocusPolicy(Qt.StrongFocus)
 
-            act = self.report_act = create_action(
-                self, 'Report Hours', 'Ctrl+R'
-            )
+            act = self.report_act = create_action(self, 'Report Hours', 'Ctrl+R')
             act.triggered.connect(self.show_report)
 
             act = self.enter_datetime_act = create_action(
@@ -288,7 +305,6 @@ def gui(database):
             p = self.pay_period_progress
             p.setValue(min(p.maximum(), self.pay_period_total))
 
-
         def update_progress(self):
             now = datetime.now()
             delta = now.timestamp() - self.last_in_ts
@@ -298,9 +314,12 @@ def gui(database):
             self.update_totals()
 
             if now >= self.this_tenth_done:
-                next_tenth = floor(10 * (
-                    self.pay_period_total / self.seconds_per_pay_period
-                )) + 1
+                next_tenth = (
+                    floor(
+                        10 * (self.pay_period_total / self.seconds_per_pay_period)
+                    )
+                    + 1
+                )
                 pp_tenth = timedelta(
                     seconds=round(self.seconds_per_pay_period / 10)
                 )
@@ -311,7 +330,7 @@ def gui(database):
 
             self.datetime_label.setText(
                 '{:02d}-{:02d} {:02d}:{:02d}:{:02d}'.format(
-                    now.month, now.day, now.hour, now.minute, now.second,
+                    now.month, now.day, now.hour, now.minute, now.second
                 )
             )
 
@@ -347,12 +366,11 @@ def gui(database):
                     self.last_in_pay_period_total = self.pay_period_total
 
                     day_to_go = timedelta(
-                        seconds = self.seconds_per_day - self.last_in_day_total
+                        seconds=self.seconds_per_day - self.last_in_day_total
                     )
                     pay_period_to_go = timedelta(
-                        seconds =
-                            self.seconds_per_pay_period
-                            - self.last_in_pay_period_total
+                        seconds=self.seconds_per_pay_period
+                        - self.last_in_pay_period_total
                     )
 
                     day_done = now + day_to_go
@@ -364,16 +382,23 @@ def gui(database):
                         )
                     else:
                         self.whats_done_label.setText('Finish (D):')
-                        self.done_at_label.setText(
-                            day_done.strftime(self.time_fmt)
-                        )
+                        self.done_at_label.setText(day_done.strftime(self.time_fmt))
 
-                    next_tenth = floor(10 * (
-                        self.last_in_pay_period_total / self.seconds_per_pay_period
-                    )) + 1
-                    next_tenth_to_go = timedelta(seconds =
-                        ceil((next_tenth / 10) * self.seconds_per_pay_period)
-                            - self.last_in_pay_period_total
+                    next_tenth = (
+                        floor(
+                            10
+                            * (
+                                self.last_in_pay_period_total
+                                / self.seconds_per_pay_period
+                            )
+                        )
+                        + 1
+                    )
+                    next_tenth_to_go = timedelta(
+                        seconds=ceil(
+                            (next_tenth / 10) * self.seconds_per_pay_period
+                        )
+                        - self.last_in_pay_period_total
                     )
                     self.this_tenth_done = this_tenth_done = now + next_tenth_to_go
                     self.tenth_step_label.setText(
@@ -396,6 +421,7 @@ def gui(database):
     m.show()
     sys.exit(app.exec())
 
+
 def relative_pay_period_start(now):
     # At the time of writing, the last period start is 2023-01-14.
     known_start = datetime.fromisoformat('2023-01-14')
@@ -404,6 +430,7 @@ def relative_pay_period_start(now):
 
     return now - (delta % period_length)
 
+
 def day_totals(cur, start=None):
     now = datetime.now()
     totals = []
@@ -411,8 +438,11 @@ def day_totals(cur, start=None):
 
     start = start or relative_pay_period_start(now)
 
-    if 0 == cur.execute(f'''select count(*) from clocks
-            where timestamp >= {start.timestamp()};''').fetchone()[0]:
+    if (
+        0
+        == cur.execute(f'''select count(*) from clocks
+            where timestamp >= {start.timestamp()};''').fetchone()[0]
+    ):
         return totals
 
     while start < now:
@@ -440,6 +470,7 @@ def day_totals(cur, start=None):
 
     return totals
 
+
 def hours(database):
     date = relative_pay_period_start(datetime.now())
     with SQLite3Connection(database) as conn:
@@ -462,17 +493,18 @@ def hours(database):
         if grand_total > 0.0:
             print('     Total: {:3d}:{:02d}:{:02d}'.format(*hms(grand_total)))
 
+
 def main(args_list=None):
     import argparse
     import os
 
     arg_parser = argparse.ArgumentParser(
-        description = 'Use a SQLite database to keep up with clock ins/outs'
+        description='Use a SQLite database to keep up with clock ins/outs'
     )
     _a = arg_parser.add_argument
-    _a('--database', help = 'File to use for clock ins/outs')
-    _a('--gui', action = 'store_true', help = 'Show the GUI')
-    _a('--version', action = 'store_true', help = 'Show version')
+    _a('--database', help='File to use for clock ins/outs')
+    _a('--gui', action='store_true', help='Show the GUI')
+    _a('--version', action='store_true', help='Show version')
     args = arg_parser.parse_args(args_list or sys.argv[1:])
 
     if args.version:
@@ -482,4 +514,6 @@ def main(args_list=None):
     fn = gui if args.gui else hours
     fn(args.database or os.path.join(os.environ['HOME'], '.clkins.sqlite3'))
 
-if '__main__' == __name__: main()
+
+if '__main__' == __name__:
+    main()
