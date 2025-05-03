@@ -10,6 +10,9 @@
 # edit time and description. Be able to break down time by project, if
 # applicable.
 
+import hashlib
+import mmap
+import pathlib
 import sqlite3
 import sys
 
@@ -58,7 +61,7 @@ def s2p(s):
 def gui(database):
     from math import ceil, floor, sqrt
     from PySide6.QtCore import Qt, QDateTime, QTimer, Slot
-    from PySide6.QtGui import QAction
+    from PySide6.QtGui import QAction, QFont
     from PySide6.QtWidgets import (
         QApplication,
         QLabel,
@@ -82,7 +85,14 @@ def gui(database):
     # This function (and its partner-in-crime below) are adapted from the
     # Summerfield book; Rapid GUI Programming with Python and Qt.
     def create_action(
-        parent, text, shortcut=None, tip=None, checkable=False, action=None
+        parent,
+        text,
+        *,
+        action=None,
+        shortcut=None,
+        handler=None,
+        tip=None,
+        checkable=False,
     ):
         action = action or QAction(text, parent)
 
@@ -97,9 +107,12 @@ def gui(database):
         if checkable:
             action.setCheckable(True)
 
+        if handler is not None:
+            action.triggered.connect(handler)
+
         return action
 
-    def add_actions(target, actions):
+    def add_actions(target, *actions):
         for action in actions:
             if action is None:
                 target.addSeparator()
@@ -192,8 +205,44 @@ def gui(database):
             table.resizeColumnsToContents()
             table.resizeRowsToContents()
 
+    class FilesInfoDialog(QDialog):
+        def __init__(self, parent=None, database=None):
+            super().__init__(parent)
+
+            def path_hash(path, *, algo=None):
+                algo = algo or 'md5'
+                path = pathlib.Path(path)
+
+                if 0 == path.stat().st_size:
+                    return hashlib.new(algo).hexdigest()
+
+                with (
+                    path.open('rb') as f,
+                    mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm,
+                ):
+                    return hashlib.new(algo, memoryview(mm)).hexdigest()
+
+            layout = QGridLayout()
+            self.setLayout(layout)
+            add = layout.addWidget
+            right = Qt.Alignment() | Qt.AlignRight
+            mono = QFont('Hack')
+
+            database_hash_label = QLabel(path_hash(database))
+            script_hash_label = QLabel(path_hash(__file__))
+
+            database_hash_label.setFont(mono)
+            script_hash_label.setFont(mono)
+
+            add(QLabel('Database Path:'), 0, 0, alignment=right)
+            add(QLabel(database), 0, 1)
+            add(QLabel('Database MD5:'), 1, 0, alignment=right)
+            add(database_hash_label, 1, 1)
+            add(QLabel('Script MD5:'), 2, 0, alignment=right)
+            add(script_hash_label, 2, 1)
+
     class ClockInOut(QWidget):
-        def __init__(self, parent=None):
+        def __init__(self, parent=None, database=None):
             super().__init__(parent)
             self.database = database
             self.day_total = 0
@@ -251,24 +300,36 @@ def gui(database):
 
             self.setFocusPolicy(Qt.StrongFocus)
 
-            act = self.report_act = create_action(self, 'Report Hours', 'Ctrl+R')
-            act.triggered.connect(self.show_report)
-
-            act = self.enter_datetime_act = create_action(
-                self, 'Enter Date/Time', 'Ctrl+E'
+            self.menu_actions = (
+                create_action(
+                    self,
+                    'Enter Date/Time',
+                    shortcut='Ctrl+E',
+                    handler=self.input_datetime,
+                ),
+                create_action(
+                    self,
+                    "Show Files' Info",
+                    shortcut='Ctrl+F',
+                    handler=self.show_files_info,
+                ),
+                create_action(
+                    self,
+                    'Report Hours',
+                    shortcut='Ctrl+R',
+                    handler=self.show_report,
+                ),
             )
-            act.triggered.connect(self.input_datetime)
 
-            act = self.quit_act = create_action(self, 'Quit', 'Ctrl+Q')
-            act.triggered.connect(QApplication.quit)
-
-            add_actions(
-                self, (self.report_act, self.enter_datetime_act, self.quit_act)
+            self.quit_act = create_action(
+                self, 'Quit', shortcut='Ctrl+Q', handler=QApplication.quit
             )
+
+            add_actions(self, self.quit_act, *self.menu_actions)
 
         def contextMenuEvent(self, event):
             menu = QMenu(self)
-            add_actions(menu, (self.enter_datetime_act, self.report_act))
+            add_actions(menu, *self.menu_actions)
             menu.exec(event.globalPos())
 
         @Slot()
@@ -292,6 +353,12 @@ def gui(database):
 
             self.in_ = None
             self.in_out()
+
+        @Slot()
+        def show_files_info(self):
+            fi = FilesInfoDialog(self, self.database)
+            fi.setWindowTitle('Files Info')
+            fi.exec()
 
         def update_totals(self):
             h, m, s = hms(self.day_total)
@@ -410,7 +477,7 @@ def gui(database):
 
     app = QApplication(sys.argv)
     m = QMainWindow()
-    m.setCentralWidget(ClockInOut())
+    m.setCentralWidget(ClockInOut(database=database))
     m.setWindowTitle(f'Clock In/Out v{__version__}')
     m.adjustSize()
     s = m.size()
