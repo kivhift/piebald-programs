@@ -18,7 +18,7 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.12.0'
+__version__ = '1.13.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -56,6 +56,30 @@ def s2h(s):
 
 def s2p(s):
     return (100.0 * s) / _seconds_per_period
+
+
+def path_hash(path, *, algo=None):
+    algo = algo or 'md5'
+    path = pathlib.Path(path)
+
+    if not path.exists():
+        return 'non-extant'
+
+    if 0 == path.stat().st_size:
+        return hashlib.new(algo).hexdigest()
+
+    with (
+        path.open('rb') as f,
+        mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm,
+    ):
+        return hashlib.new(algo, memoryview(mm)).hexdigest()
+
+
+def home_relative(path):
+    p = pathlib.Path(path).absolute()
+    home = p.home()
+
+    return f'~/{p.relative_to(home)}' if p.is_relative_to(home) else str(p)
 
 
 def gui(database):
@@ -205,22 +229,9 @@ def gui(database):
             table.resizeColumnsToContents()
             table.resizeRowsToContents()
 
-    class FilesInfoDialog(QDialog):
+    class FileInfoDialog(QDialog):
         def __init__(self, parent=None, database=None):
             super().__init__(parent)
-
-            def path_hash(path, *, algo=None):
-                algo = algo or 'md5'
-                path = pathlib.Path(path)
-
-                if 0 == path.stat().st_size:
-                    return hashlib.new(algo).hexdigest()
-
-                with (
-                    path.open('rb') as f,
-                    mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm,
-                ):
-                    return hashlib.new(algo, memoryview(mm)).hexdigest()
 
             layout = QGridLayout()
             self.setLayout(layout)
@@ -235,11 +246,13 @@ def gui(database):
             script_hash_label.setFont(mono)
 
             add(QLabel('Database Path:'), 0, 0, alignment=right)
-            add(QLabel(database), 0, 1)
+            add(QLabel(home_relative(database)), 0, 1)
             add(QLabel('Database MD5:'), 1, 0, alignment=right)
             add(database_hash_label, 1, 1)
-            add(QLabel('Script MD5:'), 2, 0, alignment=right)
-            add(script_hash_label, 2, 1)
+            add(QLabel('Script Path:'), 2, 0, alignment=right)
+            add(QLabel(home_relative(__file__)), 2, 1)
+            add(QLabel('Script MD5:'), 3, 0, alignment=right)
+            add(script_hash_label, 3, 1)
 
     class ClockInOut(QWidget):
         def __init__(self, parent=None, database=None):
@@ -309,9 +322,9 @@ def gui(database):
                 ),
                 create_action(
                     self,
-                    "Show Files' Info",
+                    "Show File Info",
                     shortcut='Ctrl+F',
-                    handler=self.show_files_info,
+                    handler=self.show_file_info,
                 ),
                 create_action(
                     self,
@@ -355,9 +368,9 @@ def gui(database):
             self.in_out()
 
         @Slot()
-        def show_files_info(self):
-            fi = FilesInfoDialog(self, self.database)
-            fi.setWindowTitle('Files Info')
+        def show_file_info(self):
+            fi = FileInfoDialog(self, self.database)
+            fi.setWindowTitle('File Info')
             fi.exec()
 
         def update_totals(self):
@@ -561,6 +574,16 @@ def hours(database):
             print('     Total: {:3d}:{:02d}:{:02d}'.format(*hms(grand_total)))
 
 
+def file_info(database):
+    print(
+        f'Database Path: {home_relative(database)}',
+        f' Database MD5: {path_hash(database)}',
+        f'  Script Path: {home_relative(__file__)}',
+        f'   Script MD5: {path_hash(__file__)}',
+        sep='\n',
+    )
+
+
 def main(args_list=None):
     import argparse
     import os
@@ -571,11 +594,13 @@ def main(args_list=None):
     _a = arg_parser.add_argument
     _a('--database', help='file to use for clock ins/outs')
     _a('--gui', action='store_true', help='show the GUI')
+    _a('--info', action='store_true', help='show info about files')
     _a('--version', action='version', version=f'%(prog)s {__version__}')
     args = arg_parser.parse_args(args_list or sys.argv[1:])
 
-    fn = gui if args.gui else hours
-    fn(args.database or os.path.join(os.environ['HOME'], '.clkins.sqlite3'))
+    (gui if args.gui else file_info if args.info else hours)(
+        args.database or os.path.join(os.environ['HOME'], '.clkins.sqlite3')
+    )
 
 
 if '__main__' == __name__:
