@@ -569,14 +569,10 @@ def main(args_list=None):
         description='Use a SQLite database to keep up with clock ins/outs'
     )
     _a = arg_parser.add_argument
-    _a('--database', help='File to use for clock ins/outs')
-    _a('--gui', action='store_true', help='Show the GUI')
-    _a('--version', action='store_true', help='Show version')
+    _a('--database', help='file to use for clock ins/outs')
+    _a('--gui', action='store_true', help='show the GUI')
+    _a('--version', action='version', version=f'%(prog)s {__version__}')
     args = arg_parser.parse_args(args_list or sys.argv[1:])
-
-    if args.version:
-        print(os.path.basename(sys.argv[0]), __version__)
-        return
 
     fn = gui if args.gui else hours
     fn(args.database or os.path.join(os.environ['HOME'], '.clkins.sqlite3'))
