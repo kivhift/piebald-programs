@@ -18,7 +18,7 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.13.0'
+__version__ = '1.13.1'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -79,7 +79,11 @@ def home_relative(path):
     p = pathlib.Path(path).absolute()
     home = p.home()
 
-    return f'~/{p.relative_to(home)}' if p.is_relative_to(home) else str(p)
+    return (
+        f'~{pathlib.os.path.sep}{p.relative_to(home)}'
+        if p.is_relative_to(home)
+        else str(p)
+    )
 
 
 def gui(database):
