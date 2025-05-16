@@ -12,13 +12,14 @@
 
 import hashlib
 import mmap
+import os
 import pathlib
 import sqlite3
 import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.13.1'
+__version__ = '1.13.2'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -80,9 +81,7 @@ def home_relative(path):
     home = p.home()
 
     return (
-        f'~{pathlib.os.path.sep}{p.relative_to(home)}'
-        if p.is_relative_to(home)
-        else str(p)
+        f'~{os.path.sep}{p.relative_to(home)}' if p.is_relative_to(home) else str(p)
     )
 
 
@@ -590,7 +589,6 @@ def file_info(database):
 
 def main(args_list=None):
     import argparse
-    import os
 
     arg_parser = argparse.ArgumentParser(
         description='Use a SQLite database to keep up with clock ins/outs'
