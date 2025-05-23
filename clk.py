@@ -19,7 +19,7 @@ import sys
 
 from datetime import datetime, time, timedelta
 
-__version__ = '1.13.2'
+__version__ = '1.13.3'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -194,7 +194,7 @@ def gui(database):
             vbox.setSizeConstraint(vbox.SizeConstraint.SetFixedSize)
             vbox.setContentsMargins(0, 0, 0, 0)
 
-            headers = 'Date Hours Total %'.split()
+            headers = 'Date Σ % Δ'.split()
             table = QTableWidget(0, len(headers))
             vbox.addWidget(table)
 
@@ -224,9 +224,9 @@ def gui(database):
                         grand_total += total
                         row = get_and_add_row()
                         table.setItem(row, 0, twi(str(date.date())))
-                        table.setItem(row, 1, twi(hours_str(total)))
-                        table.setItem(row, 2, twi(hours_str(grand_total)))
-                        table.setItem(row, 3, twi(f'{s2p(grand_total):.1f}'))
+                        table.setItem(row, 1, twi(hours_str(grand_total)))
+                        table.setItem(row, 2, twi(f'{s2p(grand_total):.1f}'))
+                        table.setItem(row, 3, twi(hours_str(total)))
                     date += _day_delta
 
             table.resizeColumnsToContents()
@@ -351,7 +351,7 @@ def gui(database):
         @Slot()
         def show_report(self):
             report = HoursReportDialog(self, database=self.database)
-            report.setWindowTitle('Report')
+            report.setWindowTitle('Hours Report')
             report.exec()
 
         @Slot()
@@ -557,19 +557,25 @@ def day_totals(cur, start=None):
 def hours(database):
     date = relative_pay_period_start(datetime.now())
     with SQLite3Connection(database) as conn:
-        grand_total = 0.0
         cur = conn.cursor()
         cur.execute(_schema)
-        for total in day_totals(cur, date):
+
+        totals = day_totals(cur, date)
+        if 0 == len(totals):
+            return
+
+        print('   Date        Work       Σ       %      Δ')
+        grand_total = 0.0
+        for total in totals:
             if total > 0.0:
                 grand_total += total
                 print(
-                    '{}: {:3d}:{:02d}:{:02d} = {:6.2f} Σ {:6.2f} ({:4.1f}%)'.format(
+                    '{}: {:3d}:{:02d}:{:02d}  {:6.2f}  {:5.1f}  {:6.2f}'.format(
                         date.date(),
                         *hms(total),
-                        s2h(total),
                         s2h(grand_total),
                         s2p(grand_total),
+                        s2h(total),
                     )
                 )
             date += _day_delta
