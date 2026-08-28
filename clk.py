@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 #
-# Copyright 2020-2025 Joshua Hughes <kivhift@gmail.com>
+# Copyright 2020-2026 Joshua Hughes <kivhift@gmail.com>
 
 # TODO:
 #
@@ -18,8 +18,9 @@ import sqlite3
 import sys
 
 from datetime import datetime, time, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
-__version__ = '1.13.3'
+__version__ = '1.14.0'
 
 _schema = '''create table if not exists
     clocks(timestamp datetime primary key, in_ boolean);'''
@@ -42,6 +43,18 @@ class SQLite3Connection(sqlite3.Connection):
         s = super()
         if hasattr(s, '__del__'):
             s.__del__()
+
+
+# ``round()`` uses Banker's rounding. Re-define it for our use case.
+def round(x):
+    if isinstance(x, int):
+        return x
+
+    return int(Decimal(x).quantize(_round_exp, ROUND_HALF_UP))
+
+
+# Cache this instead of instantiating it each time.
+_round_exp = Decimal(1)
 
 
 def hms(s):
@@ -81,32 +94,44 @@ def home_relative(path):
     home = p.home()
 
     return (
-        f'~{os.path.sep}{p.relative_to(home)}' if p.is_relative_to(home) else str(p)
+        f'~{os.path.sep}{p.relative_to(home)}'
+        if p.is_relative_to(home)
+        else str(p)
     )
 
 
 def gui(database):
+    from collections import namedtuple
     from math import ceil, floor, sqrt
-    from PySide6.QtCore import Qt, QDateTime, QTimer, Slot
-    from PySide6.QtGui import QAction, QFont
+
+    from PySide6.QtCore import QDateTime, QRectF, Qt, QTimer, Slot
+    from PySide6.QtGui import (
+        QAction,
+        QColor,
+        QFont,
+        QIcon,
+        QImage,
+        QPainter,
+        QPixmap,
+    )
     from PySide6.QtWidgets import (
+        QAbstractScrollArea,
         QApplication,
-        QLabel,
-        QProgressBar,
-        QGridLayout,
-        QHBoxLayout,
-        QVBoxLayout,
-        QWidget,
-        QMainWindow,
+        QCheckBox,
+        QDateTimeEdit,
         QDialog,
         QDialogButtonBox,
-        QDateTimeEdit,
-        QCheckBox,
+        QFrame,
+        QGridLayout,
+        QHBoxLayout,
+        QLabel,
+        QMainWindow,
+        QMenu,
+        QProgressBar,
         QTableWidget,
         QTableWidgetItem,
-        QAbstractScrollArea,
-        QMenu,
-        QFrame,
+        QVBoxLayout,
+        QWidget,
     )
 
     # This function (and its partner-in-crime below) are adapted from the
@@ -184,11 +209,11 @@ def gui(database):
             super().__init__(parent)
 
             def twi(text):
-                I = QTableWidgetItem(text)
-                I.setFlags(I.flags() ^ Qt.ItemFlags.ItemIsEditable)
-                I.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                item = QTableWidgetItem(text)
+                item.setFlags(item.flags() ^ Qt.ItemFlags.ItemIsEditable)
+                item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-                return I
+                return item
 
             vbox = QVBoxLayout(self)
             vbox.setSizeConstraint(vbox.SizeConstraint.SetFixedSize)
@@ -205,8 +230,12 @@ def gui(database):
             table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             table.setHorizontalHeaderLabels(headers)
 
+            # Cache this rather than instantiating it every time
+            # ``hours_str()`` needs it.
+            _hours_exp = Decimal('1.0')
+
             def hours_str(s):
-                return f'{s2h(s):.2f}'
+                return str(Decimal(s2h(s)).quantize(_hours_exp, ROUND_HALF_UP))
 
             def get_and_add_row():
                 row = table.rowCount()
@@ -258,6 +287,8 @@ def gui(database):
             add(script_hash_label, 3, 1)
 
     class ClockInOut(QWidget):
+        Progress = namedtuple('Progress', 'day_fraction period_fraction')
+
         def __init__(self, parent=None, database=None):
             super().__init__(parent)
             self.database = database
@@ -290,7 +321,9 @@ def gui(database):
             layout.addWidget(day_progress, 0, 2, 1, 2)
 
             layout.addWidget(QLabel('Period:'), 1, 0, alignment=align_right)
-            layout.addWidget(pay_period_total_label, 1, 1, alignment=align_right)
+            layout.addWidget(
+                pay_period_total_label, 1, 1, alignment=align_right
+            )
             layout.addWidget(pay_period_progress, 1, 2, 1, 2)
 
             layout.addWidget(whats_done_label, 2, 0, alignment=align_right)
@@ -343,7 +376,7 @@ def gui(database):
 
             add_actions(self, self.quit_act, *self.menu_actions)
 
-        def contextMenuEvent(self, event):
+        def contextMenuEvent(self, event):  # noqa: N802
             menu = QMenu(self)
             add_actions(menu, *self.menu_actions)
             menu.exec(event.globalPos())
@@ -382,6 +415,13 @@ def gui(database):
             h, m, s = hms(self.pay_period_total)
             self.pay_period_total_label.setText(f'{h:d}:{m:02d}:{s:02d}')
 
+        def get_progress(self):
+            return type(self).Progress(
+                day_fraction=self.day_total / self.seconds_per_day,
+                period_fraction=self.pay_period_total
+                / self.seconds_per_pay_period,
+            )
+
         def set_progress(self):
             p = self.day_progress
             p.setValue(min(p.maximum(), self.day_total))
@@ -399,7 +439,8 @@ def gui(database):
             if now >= self.this_tenth_done:
                 next_tenth = (
                     floor(
-                        10 * (self.pay_period_total / self.seconds_per_pay_period)
+                        10
+                        * (self.pay_period_total / self.seconds_per_pay_period)
                     )
                     + 1
                 )
@@ -408,13 +449,13 @@ def gui(database):
                 )
                 self.this_tenth_done = this_tenth_done = now + pp_tenth
                 self.tenth_step_label.setText(
-                    f'{10 * next_tenth}% @ {this_tenth_done.strftime(self.time_fmt)}'
+                    f'{10 * next_tenth}%'
+                    f' @ {this_tenth_done.strftime(self.time_fmt)}'
                 )
 
             self.datetime_label.setText(
-                '{:02d}-{:02d} {:02d}:{:02d}:{:02d}'.format(
-                    now.month, now.day, now.hour, now.minute, now.second
-                )
+                f'{now.month:02d}-{now.day:02d}'
+                f' {now.hour:02d}:{now.minute:02d}:{now.second:02d}'
             )
 
         def in_out(self):
@@ -465,7 +506,9 @@ def gui(database):
                         )
                     else:
                         self.whats_done_label.setText('Finish (D):')
-                        self.done_at_label.setText(day_done.strftime(self.time_fmt))
+                        self.done_at_label.setText(
+                            day_done.strftime(self.time_fmt)
+                        )
 
                     next_tenth = (
                         floor(
@@ -483,17 +526,72 @@ def gui(database):
                         )
                         - self.last_in_pay_period_total
                     )
-                    self.this_tenth_done = this_tenth_done = now + next_tenth_to_go
+                    self.this_tenth_done = this_tenth_done = (
+                        now + next_tenth_to_go
+                    )
                     self.tenth_step_label.setText(
-                        f'{10 * next_tenth}% @ {this_tenth_done.strftime(self.time_fmt)}'
+                        f'{10 * next_tenth}%'
+                        f' @ {this_tenth_done.strftime(self.time_fmt)}'
                     )
 
                 self.set_progress()
                 self.update_totals()
 
     app = QApplication(sys.argv)
+    cio = ClockInOut(database=database)
+
+    icon_w = 256
+    icon_image = QImage(icon_w, icon_w, QImage.Format_ARGB32)
+    period_r = icon_w / 2
+    day_r = period_r / sqrt(2)
+    day_w = 2 * day_r
+    icon_period_rect = QRectF(0, 0, icon_w, icon_w)
+    delta_r = period_r - day_r
+    icon_day_rect = QRectF(delta_r, delta_r, day_w, day_w)
+    hole_r = day_r - delta_r
+    hole_w = 2 * hole_r
+    hole_offset = 2 * delta_r
+    hole_rect = QRectF(hole_offset, hole_offset, hole_w, hole_w)
+    start_angle = 90 * 16
+    full_arc = 360 * 16
+    bg_color = QColor('#000000')
+    period_color = QColor('#ff0000')
+    day_color = QColor('#00ff00')
+    painter = QPainter()
+
+    def update_app_icon():
+        prog = cio.get_progress()
+        icon_image.fill(0)
+        painter.begin(icon_image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(bg_color)
+        painter.drawPie(icon_period_rect, 0, full_arc)
+        painter.setBrush(period_color)
+        painter.drawPie(
+            icon_period_rect,
+            start_angle,
+            -round(full_arc * prog.period_fraction),
+        )
+        painter.setBrush(day_color)
+        painter.drawPie(
+            icon_day_rect, start_angle, -round(full_arc * prog.day_fraction)
+        )
+
+        painter.setBrush(bg_color)
+        painter.drawPie(hole_rect, 0, full_arc)
+        painter.end()
+
+        app.setWindowIcon(QIcon(QPixmap.fromImage(icon_image)))
+
+    t = QTimer(app)
+    # Not sure if it's discernible, but let's update every degree increase for
+    # the day: 8 * 3600 / 360 = 80 ==> 80000ms.
+    t.setInterval(80000)
+    t.timeout.connect(update_app_icon)
+
     m = QMainWindow()
-    m.setCentralWidget(ClockInOut(database=database))
+    m.setCentralWidget(cio)
     m.setWindowTitle(f'Clock In/Out v{__version__}')
     m.adjustSize()
     s = m.size()
@@ -501,7 +599,11 @@ def gui(database):
     s.setWidth(round(_2phi * s.height()))
     m.resize(s)
     m.move(0, 0)
+
+    update_app_icon()
     m.show()
+    t.start()
+
     sys.exit(app.exec())
 
 
