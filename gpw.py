@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+#
+# SPDX-License-Identifier: MIT
+#
+# Copyright 2020 Joshua Hughes <kivhift@gmail.com>
 
 import secrets
 import string
@@ -12,8 +16,7 @@ def generate_password(sz=None, chars=None):
 
     return ''.join(
         secrets.SystemRandom().choices(
-            chars or _default_pw_chars,
-            k=sz or _default_pw_size,
+            chars or _default_pw_chars, k=sz or _default_pw_size
         )
     )
 
@@ -36,8 +39,7 @@ def generate_left_hand_password(sz=None):
     '''Generate a left-handed password via :func:`generate_password`.'''
 
     return generate_password(
-        sz=sz,
-        chars='`123456qwertasdfgzxcvb~!@#$%^QWERTASDFGZXCVB',
+        sz=sz, chars='`123456qwertasdfgzxcvb~!@#$%^QWERTASDFGZXCVB'
     )
 
 
@@ -56,7 +58,13 @@ if '__main__' == __name__:
     )
     _a = parser.add_argument
     _a('-s', '--size', type=int, default=_default_pw_size, help='Password size')
-    _a('-t', '--type', choices=gp.keys(), default='generic', help='Password type')
+    _a(
+        '-t',
+        '--type',
+        choices=gp.keys(),
+        default='generic',
+        help='Password type',
+    )
     args = parser.parse_args()
 
     sz = args.size

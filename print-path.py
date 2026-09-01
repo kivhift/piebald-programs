@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+#
+# SPDX-License-Identifier: MIT
+#
+# Copyright 2025 Joshua Hughes <kivhift@gmail.com>
 
 import argparse
 import os
